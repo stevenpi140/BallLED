@@ -194,7 +194,8 @@ class Renderer:
                 mid, mid_color = "延賽", DIM
             else:
                 mid, mid_color = f"{g.away.score or 0}-{g.home.score or 0}", WHITE if g.state == "live" else DIM
-            rows.append((g, _tiny(g.away.name), _tiny(g.home.name), mid, mid_color, g.short_status()))
+            away = g.away.name if g.race is not None else _tiny(g.away.name)  # F1 分站名稱最多 4 字，不截短
+            rows.append((g, away, _tiny(g.home.name), mid, mid_color, g.short_status()))
         # 固定欄位：每一列共用同一個「主隊右緣」和「比分中心」，上下才會對齊。
         # 放不下時先拿掉終場的「終」（比分已經變暗，看得出是終場）
         layout = self._overview_layout(rows, drop_final=False) or self._overview_layout(rows, drop_final=True)
@@ -282,15 +283,12 @@ class Renderer:
         return img
 
     def race(self, g: Game, now: datetime) -> Image.Image:
-        """F1 單場頁：大獎賽、賽段、前三名（名次、車手代碼、車隊）、狀態。"""
+        """F1 單場頁：分站（墨西哥站）、賽段、前三名（名次、車手代碼、車隊）、狀態。"""
         img, d = self._canvas()
         r = g.race
         x = 1 + self.text(d, (1, 0), "F1", self.small, LEAGUE_COLORS.get("F1", WHITE))
-        title = r.gp + "大獎賽"
         sw = self.tw(r.session, self.small)
-        if x + 4 + self.tw(title, self.small) + 6 + sw > self.w:
-            title = r.gp
-        self.text(d, (x + 4, 0), title, self.small, YELLOW, max_w=self.w - x - 10 - sw)
+        self.text(d, (x + 4, 0), r.gp, self.small, YELLOW, max_w=self.w - x - 10 - sw)
         self.text(d, (self.w - 1, 0), r.session, self.small, WHITE, anchor_right=True)
 
         rows = r.drivers[:3]

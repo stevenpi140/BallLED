@@ -123,7 +123,7 @@ def parse(data: dict, cfg: Config, day: date) -> list[Game]:
                 race.laps = lap  # 結束時 period 就是實際完成的圈數
             games.append(Game(
                 league="F1", id=cid, start=start, state=state,  # type: ignore[arg-type]
-                # 總覽頁借用 away / home：左邊大獎賽、右邊賽段
+                # 總覽頁借用 away / home：左邊分站、右邊賽段
                 away=TeamLine("F1", gp_short, gp, WHITE), home=TeamLine(key, session_short, session, YELLOW),
                 race=race, detail=str((st.get("type") or {}).get("description") or ""),
             ))

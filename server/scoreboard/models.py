@@ -48,7 +48,7 @@ class Driver:
 class Race:
     """F1 這類「不是兩隊對打」的比賽。"""
 
-    gp: str  # 大獎賽名稱，例如「墨西哥」
+    gp: str  # 分站名稱，例如「墨西哥站」
     session: str  # 正賽 / 排位賽 / 衝刺賽 / 衝刺排位
     lap: Optional[int] = None
     laps: Optional[int] = None

@@ -44,6 +44,6 @@ def demo_games(cfg: Config) -> list[Game]:
         Game("PLG", "d5", now - timedelta(hours=4), "final",
              _tw(PLG_TEAMS, "臺北富邦勇士", 102), _tw(PLG_TEAMS, "桃園璞園領航猿", 95)),
         Game("F1", "d6", now - timedelta(minutes=50), "live",
-             TeamLine("F1", "墨西哥", "墨西哥", (235, 235, 240)), TeamLine("race", "正賽", "正賽", (255, 210, 60)),
-             race=Race("墨西哥", "正賽", lap=34, laps=71, drivers=[_f1(1, "VER"), _f1(2, "NOR"), _f1(3, "LEC")])),
+             TeamLine("F1", "墨西哥站", "墨西哥站", (235, 235, 240)), TeamLine("race", "正賽", "正賽", (255, 210, 60)),
+             race=Race("墨西哥站", "正賽", lap=34, laps=71, drivers=[_f1(1, "VER"), _f1(2, "NOR"), _f1(3, "LEC")])),
     ]

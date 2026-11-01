@@ -347,7 +347,8 @@ def test_f1_espn_sessions():
     assert race.status_text() == "第 34/71 圈" and race.short_status() == "L34"
     lead = race.race.drivers[0]
     assert (lead.code, lead.team) == ("NOR", "麥拉倫")
-    assert (race.away.name, race.home.name) == ("墨西哥", "正賽")
+    assert (race.away.name, race.home.name) == ("墨西哥站", "正賽")
+    assert race.race.gp == "墨西哥站"
 
 
 def test_f1_pre_race_has_no_order():
@@ -356,7 +357,7 @@ def test_f1_pre_race_has_no_order():
     data = {"events": [{"name": "Las Vegas Grand Prix", "competitions": [
         _f1_comp("9", "Race", "2026-11-21T04:00Z", "pre", 0)]}]}
     g = f1.parse(data, CFG, date(2026, 11, 21))[0]
-    assert g.state == "pre" and g.race.drivers == [] and g.race.gp == "拉斯維加斯" and g.away.name == "賭城"
+    assert g.state == "pre" and g.race.drivers == [] and g.race.gp == "拉斯維加斯站" and g.away.name == "賭城站"
     assert g.status_text() == "12:00 開始"
 
 
