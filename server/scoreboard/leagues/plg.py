@@ -119,7 +119,9 @@ def to_game(r: dict, cfg: Config, now: datetime) -> Game:
     has_score = r["away_score"] is not None and r["home_score"] is not None and (r["away_score"] + r["home_score"]) > 0
     if start <= now < start + GAME_LENGTH:
         state = "live"
-    elif not r["future"] and has_score:
+    elif has_score and (not r["future"] or now >= start + GAME_LENGTH):
+        # 賽程頁的 is-future 有時比賽打完了還沒拿掉：開賽超過 2.5 小時又有比分，就當作終場
+        # （正常情況會先被單場 API 的 match_status 判定，這裡是 API 也抓不到時的保底）
         state = "final"
     else:
         state = "pre"

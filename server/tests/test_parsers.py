@@ -485,3 +485,15 @@ def test_f1_token_extract_and_write(tmp_path):
     cfg2.write_text("leagues:\n  f1:\n    enabled: true\n", encoding="utf-8")
     assert set_config_token(cfg2, tok) and f'    live_token: "{tok}"' in cfg2.read_text(encoding="utf-8")
     assert not set_config_token(tmp_path / "none.yaml", tok)
+
+
+def test_plg_stale_future_flag_with_score_is_final_without_api():
+    later = datetime.now(CFG.tz)
+    start = later - timedelta(hours=4)
+    row = {"id": "727", "date": start.date(), "time": (start.hour, start.minute), "away": "方舟", "home": "獵鷹",
+           "away_score": 88, "home_score": 90, "future": True}
+    g = plg.to_game(row, CFG, later)
+    assert g.state == "final" and (g.away.score, g.home.score) == (88, 90)
+    # 沒有比分的過期賽程維持原狀，等單場 API 判定
+    empty = {**row, "away_score": 0, "home_score": 0}
+    assert plg.to_game(empty, CFG, later).state == "pre"
