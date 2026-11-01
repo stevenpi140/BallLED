@@ -358,3 +358,23 @@ def test_f1_pre_race_has_no_order():
     g = f1.parse(data, CFG, date(2026, 11, 21))[0]
     assert g.state == "pre" and g.race.drivers == [] and g.race.gp == "拉斯維加斯" and g.away.name == "賭城"
     assert g.status_text() == "12:00 開始"
+
+
+def test_f1_live_merge_and_board():
+    from scoreboard.leagues.f1_live import LiveTiming
+
+    lt = LiveTiming()
+    lt._apply("DriverList", {"1": {"Tla": "NOR", "TeamName": "McLaren", "TeamColour": "FF8000"},
+                             "16": {"Tla": "LEC", "TeamName": "Ferrari", "TeamColour": "E8002D"}})
+    lt._apply("TimingData", {"Lines": {"1": {"Position": "1", "GapToLeader": "LAP 34"},
+                                       "16": {"Position": "2", "GapToLeader": "+1.234", "Sectors": [{"Value": "20.1"}]}}})
+    # 差異更新只帶有變的欄位：名次互換，其他欄位要保留
+    lt._apply("TimingData", {"Lines": {"1": {"Position": "2", "GapToLeader": "+0.4"},
+                                       "16": {"Position": "1", "GapToLeader": "LAP 35", "Sectors": {"0": {"Value": "19.9"}}}}})
+    lt._apply("LapCount", {"CurrentLap": 35, "TotalLaps": 71})
+    lt._apply("SessionInfo", {"Meeting": {"Name": "Mexico City Grand Prix"}, "Name": "Race", "Type": "Race"})
+    b = lt.board()
+    assert [d["tla"] for d in b["drivers"]] == ["LEC", "NOR"]
+    assert b["drivers"][1]["gap"] == "+0.4" and b["lap"] == 35 and b["laps"] == 71
+    assert lt.state["TimingData"]["Lines"]["16"]["Sectors"]["0"]["Value"] == "19.9"
+    assert lt.matches("race") and not lt.matches("qualifying") and not lt.matches("sprint")

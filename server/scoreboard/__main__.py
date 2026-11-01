@@ -187,6 +187,7 @@ async def _diagnose(out: Path):
     async with make_client() as client:
         await _diagnose_cpbl(client, raw_dir)
         await _diagnose_f1(client, raw_dir)
+        await _diagnose_f1_live(client)
         print("野球革命：")
         for i, url in enumerate(DIAG_URLS, 1):
             try:
@@ -252,6 +253,27 @@ async def _diagnose_f1(client, raw_dir: Path) -> None:
             print("    頂層欄位：", list(data.keys()))
         else:
             print("    結構：", json.dumps(shape(data, maxd=6), ensure_ascii=False)[:1800])
+
+
+async def _diagnose_f1_live(client) -> None:
+    """測試 F1 官方即時計時資料流能不能用誠實的 User-Agent 連上，並印出欄位。"""
+    from .leagues.f1_live import LiveTiming
+
+    lt = LiveTiming()
+    print("F1 官方即時計時（BallLED 自己的 User-Agent，不偽裝）：")
+    try:
+        await asyncio.wait_for(lt.session(client, stop_after_snapshot=True), 30)
+    except Exception as e:
+        print(f"  失敗：{type(e).__name__}: {e}")
+        return
+    print("  連線成功，快照大小：", {k: len(json.dumps(v)) for k, v in lt.state.items()})
+    print("  SessionInfo：", json.dumps(lt.state["SessionInfo"], ensure_ascii=False)[:700])
+    print("  LapCount：", lt.state["LapCount"])
+    print("  前五名：", lt.board()["drivers"][:5])
+    dl = lt.state["DriverList"] or {}
+    print("  DriverList 範例：", json.dumps(next(iter(dl.values()), {}), ensure_ascii=False)[:500])
+    tl = (lt.state["TimingData"] or {}).get("Lines") or {}
+    print("  TimingData 範例：", json.dumps(next(iter(tl.values()), {}), ensure_ascii=False)[:900])
 
 
 def cmd_probe(a):
