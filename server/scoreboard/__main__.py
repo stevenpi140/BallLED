@@ -182,6 +182,7 @@ async def _diagnose(out: Path):
     raw_dir.mkdir(parents=True, exist_ok=True)
     async with make_client() as client:
         await _diagnose_cpbl(client, raw_dir)
+        await _diagnose_f1(client, raw_dir)
         print("野球革命：")
         for i, url in enumerate(DIAG_URLS, 1):
             try:
@@ -191,6 +192,56 @@ async def _diagnose(out: Path):
                 _summarize(url, r)
             except Exception as e:
                 print(f"  失敗  {url}  {type(e).__name__}: {e}")
+
+
+F1_URLS = [
+    "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard",
+    "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard?dates=20261101",
+    "https://api.jolpi.ca/ergast/f1/current.json",
+    "https://api.jolpi.ca/ergast/f1/current/last/results.json",
+    "https://api.jolpi.ca/ergast/f1/current/last/qualifying.json",
+]
+
+
+async def _diagnose_f1(client, raw_dir: Path) -> None:
+    """F1 資料來源的欄位結構（ESPN 沒有文件，要看實際回應）。"""
+
+    def shape(v, depth=0, maxd=4):
+        if depth > maxd:
+            return "…"
+        if isinstance(v, dict):
+            return {k: shape(x, depth + 1, maxd) for k, x in list(v.items())[:40]}
+        if isinstance(v, list):
+            return [shape(v[0], depth + 1, maxd), f"×{len(v)}"] if v else []
+        return v if not isinstance(v, str) or len(v) < 60 else v[:60] + "…"
+
+    print("F1：")
+    for i, url in enumerate(F1_URLS, 1):
+        try:
+            r = await client.get(url)
+        except Exception as e:
+            print(f"  失敗  {url}  {type(e).__name__}: {e}")
+            continue
+        print(f"  {r.status_code}  {url}  ({len(r.content)} bytes)")
+        (raw_dir / f"f1_{i:02d}.txt").write_text(f"GET {url}\nHTTP {r.status_code}\n\n{r.text}", encoding="utf-8")
+        if r.status_code != 200:
+            continue
+        data = r.json()
+        if "espn" in url:
+            for ev in data.get("events", [])[:3]:
+                print("    event:", ev.get("name"), ev.get("date"), ev.get("status", {}).get("type", {}).get("name"))
+                for c in ev.get("competitions", []):
+                    print("      comp:", c.get("type"), c.get("date"), (c.get("status") or {}).get("type", {}).get("name"),
+                          "period", (c.get("status") or {}).get("period"), "competitors", len(c.get("competitors", [])))
+                comps = ev.get("competitions") or []
+                if comps:
+                    c = comps[-1]
+                    print("      competition 欄位：", json.dumps(shape({k: v for k, v in c.items() if k != "competitors"}), ensure_ascii=False)[:1500])
+                    if c.get("competitors"):
+                        print("      competitor 範例：", json.dumps(c["competitors"][0], ensure_ascii=False)[:1500])
+            print("    頂層欄位：", list(data.keys()))
+        else:
+            print("    結構：", json.dumps(shape(data, maxd=6), ensure_ascii=False)[:1800])
 
 
 def cmd_probe(a):
