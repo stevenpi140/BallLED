@@ -7,18 +7,22 @@ Qual、Sprint、Race）是一個 competition：
   competitors[].order 名次（賽段開始前沒有）；winner 是否為冠軍
   competitors[].athlete.fullName 車手全名
 ESPN 不給車隊和時間差，車隊用 teams.F1_DRIVER_TEAM 對照，正賽總圈數用 teams.F1_GP 對照。
+
+config.yaml 有填 leagues.f1.live_token（自己 F1 帳號的 subscriptionToken）時，賽段進行中會另外連
+F1 官方即時計時（f1_live.py），補上和第一名的時間差、官方車隊顏色與總圈數；連不上就只用 ESPN。
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import httpx
 
 from ..config import Config
 from ..models import Driver, Game, Race, TeamLine
-from ..teams import F1_SESSIONS, f1_driver_code, f1_gp, f1_team
+from ..teams import F1_SESSIONS, f1_driver_code, f1_gp, f1_team, hex_rgb, led_color
 from .base import parse_iso, to_int, us_dates_for
+from .f1_live import LiveTiming
 
 URL = "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
 DEFAULT_SESSIONS = ["race", "sprint", "qualifying", "sprint_qualifying"]
@@ -29,13 +33,57 @@ class F1:
     key = "f1"
     name = "F1"
 
+    def __init__(self):
+        self.live: LiveTiming | None = None
+
     async def fetch(self, client: httpx.AsyncClient, cfg: Config, day: date) -> list[Game]:
         events: list[dict] = []
         for d in us_dates_for(day):
             r = await client.get(URL, params={"dates": d.strftime("%Y%m%d")})
             r.raise_for_status()
             events += r.json().get("events", [])
-        return parse({"events": events}, cfg, day)
+        games = parse({"events": events}, cfg, day)
+        self._use_live(cfg, games)
+        return games
+
+    def _use_live(self, cfg: Config, games: list[Game]):
+        token = str(cfg.league("f1").get("live_token") or "").strip()
+        if not token:
+            return
+        if self.live is None or self.live.token != token:
+            self.live = LiveTiming(token)
+        now = datetime.now(cfg.tz)
+        active = [g for g in games if g.state == "live" or (g.state == "pre" and g.start - now < timedelta(minutes=20))]
+        if active:
+            self.live.want()  # 賽段進行中（或 20 分鐘內開始）才連線
+        if not self.live.fresh:
+            return
+        for g in active:
+            if g.state == "live" and self.live.matches(g.home.code):
+                enrich(g, self.live.board())
+
+
+def enrich(g: Game, board: dict):
+    """用官方即時計時的資料覆蓋 ESPN 的名次：多了時間差、官方車隊顏色與總圈數。"""
+    drivers = []
+    for row in board.get("drivers", [])[:10]:
+        team, color = f1_team(row["team"], row["tla"])
+        if row["colour"]:
+            try:
+                color = led_color(hex_rgb("#" + row["colour"].lstrip("#")))
+            except ValueError:
+                pass
+        gap = row["gap"]
+        if gap.upper().startswith("LAP"):  # 第一名的 GapToLeader 是「LAP 34」
+            gap = ""
+        drivers.append(Driver(row["pos"], row["tla"], team, color, gap))
+    if drivers:
+        g.race.drivers = drivers
+    if board.get("lap"):
+        g.race.lap = int(board["lap"])
+    if board.get("laps"):
+        g.race.laps = int(board["laps"])
+    g.extra["source"] = "f1-livetiming"
 
 
 def parse(data: dict, cfg: Config, day: date) -> list[Game]:

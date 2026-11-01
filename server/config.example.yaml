@@ -45,6 +45,10 @@ leagues:
     enabled: true
     # 要顯示哪些賽段：race 正賽、sprint 衝刺賽、qualifying 排位賽、sprint_qualifying 衝刺排位、practice 練習賽
     sessions: [race, sprint, qualifying, sprint_qualifying]
+    # 選填：自己 F1 帳號（免費帳號即可）的登入憑證，填了就會在賽段進行中連 F1 官方即時計時，
+    # 畫面多出和第一名的時間差。取得方式見 README「F1 官方即時計時」。約幾天會過期，要重新複製。
+    # 這是你個人帳號的憑證，不要給別人、不要傳上 GitHub（config.yaml 已經設定不會上傳）。
+    live_token: ""
 
 # 官方隊名 -> 你想顯示的短名（覆寫自動縮寫）
 aliases: {}

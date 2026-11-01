@@ -378,3 +378,32 @@ def test_f1_live_merge_and_board():
     assert b["drivers"][1]["gap"] == "+0.4" and b["lap"] == 35 and b["laps"] == 71
     assert lt.state["TimingData"]["Lines"]["16"]["Sectors"]["0"]["Value"] == "19.9"
     assert lt.matches("race") and not lt.matches("qualifying") and not lt.matches("sprint")
+
+
+def test_f1_live_token_expiry():
+    import base64
+    import json as _json
+
+    from scoreboard.leagues.f1_live import LiveTiming, token_expiry
+
+    payload = base64.urlsafe_b64encode(_json.dumps({"exp": 1793600000}).encode()).decode().rstrip("=")
+    tok = f"xx.{payload}.yy"
+    assert token_expiry(tok) == 1793600000
+    assert token_expiry("not-a-jwt") is None
+    lt = LiveTiming(tok)
+    assert lt._auth() == {"Authorization": f"Bearer {tok}"} and LiveTiming()._auth() == {}
+
+
+def test_f1_enrich_from_livetiming():
+    from scoreboard.leagues import f1
+
+    data = {"events": [{"name": "Mexico City Grand Prix", "competitions": [
+        _f1_comp("3", "Race", "2026-11-01T20:00Z", "in", 34, [2, 1, 4, 3])]}]}
+    g = f1.parse(data, CFG, date(2026, 11, 2))[0]
+    board = {"lap": 35, "laps": 71, "drivers": [
+        {"pos": 1, "tla": "NOR", "team": "McLaren", "colour": "FF8000", "gap": "LAP 35"},
+        {"pos": 2, "tla": "VER", "team": "Red Bull Racing", "colour": "3671C6", "gap": "+1.234"},
+        {"pos": 3, "tla": "LEC", "team": "Ferrari", "colour": "E8002D", "gap": "+4.9"}]}
+    f1.enrich(g, board)
+    assert [(d.code, d.gap) for d in g.race.drivers] == [("NOR", ""), ("VER", "+1.234"), ("LEC", "+4.9")]
+    assert g.race.drivers[1].team == "紅牛" and g.race.lap == 35 and g.status_text() == "第 35/71 圈"

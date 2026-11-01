@@ -181,13 +181,13 @@ def _summarize(url: str, r) -> None:
         print("    出現的賽季代碼：", seasons[:40])
 
 
-async def _diagnose(out: Path):
+async def _diagnose(out: Path, cfg: Config | None = None):
     raw_dir = out / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     async with make_client() as client:
         await _diagnose_cpbl(client, raw_dir)
         await _diagnose_f1(client, raw_dir)
-        await _diagnose_f1_live(client)
+        await _diagnose_f1_live(client, str(((cfg.league("f1") if cfg else {}) or {}).get("live_token") or ""))
         print("野球革命：")
         for i, url in enumerate(DIAG_URLS, 1):
             try:
@@ -255,12 +255,19 @@ async def _diagnose_f1(client, raw_dir: Path) -> None:
             print("    結構：", json.dumps(shape(data, maxd=6), ensure_ascii=False)[:1800])
 
 
-async def _diagnose_f1_live(client) -> None:
-    """測試 F1 官方即時計時資料流能不能用誠實的 User-Agent 連上，並印出欄位。"""
-    from .leagues.f1_live import LiveTiming
+async def _diagnose_f1_live(client, token: str = "") -> None:
+    """測試 F1 官方即時計時資料流能不能連上（有填 live_token 就用自己的帳號），並印出欄位。"""
+    from datetime import datetime
 
-    lt = LiveTiming()
+    from .leagues.f1_live import LiveTiming, token_expiry
+
+    lt = LiveTiming(token)
     print("F1 官方即時計時（BallLED 自己的 User-Agent，不偽裝）：")
+    if token:
+        exp = token_expiry(token)
+        print("  使用 config.yaml 的 live_token，到期時間：", datetime.fromtimestamp(exp) if exp else "看不出來")
+    else:
+        print("  沒有填 live_token（官方從 2026 年 10 月起要求登入，沒有 token 通常會 403）")
     try:
         await asyncio.wait_for(lt.session(client, stop_after_snapshot=True), 30)
     except Exception as e:
@@ -282,7 +289,7 @@ def cmd_probe(a):
     asyncio.run(_probe(cfg, a.leagues, day, Path(a.out)))
     if a.diagnose:
         print("診斷：")
-        asyncio.run(_diagnose(Path(a.out)))
+        asyncio.run(_diagnose(Path(a.out), cfg))
 
 
 def main():

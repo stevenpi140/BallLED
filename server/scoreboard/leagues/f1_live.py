@@ -6,7 +6,9 @@
 3. 呼叫 Subscribe 訂閱頻道；第一個回應是完整快照，之後的 "feed" 訊息只帶有變動的欄位，要 deep merge
 
 和參考專案不同：連線時用 BallLED 自己的 User-Agent，不偽裝成官方 App（BestHTTP）或官網（Origin）。
-官方不接受這種連線的話，這個來源就不用，F1 照樣用 ESPN 的名次。
+官方要求登入時，用你自己 F1 帳號的 subscriptionToken（config.yaml 的 leagues.f1.live_token），
+以 Authorization: Bearer 送出；token 大約幾天會過期，過期要重新從瀏覽器複製。
+官方不接受連線的話，這個來源就不用，F1 照樣用 ESPN 的名次。
 
 只在 F1 賽段進行中（或快要開始）時才連線，其他時間不佔用官方伺服器。
 """
@@ -14,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import re
@@ -51,8 +54,19 @@ def deep_merge(target, src):
     return target
 
 
+def token_expiry(token: str) -> float | None:
+    """讀 JWT 裡的到期時間（不驗證簽章，只用來提醒何時要換 token）。"""
+    try:
+        payload = token.split(".")[1]
+        data = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        return float(data["exp"])
+    except Exception:
+        return None
+
+
 class LiveTiming:
-    def __init__(self):
+    def __init__(self, token: str = ""):
+        self.token = token.strip()
         self.state: dict = {c: {} for c in CHANNELS}
         self.connected = False
         self.last = 0.0
@@ -62,8 +76,11 @@ class LiveTiming:
 
     # ---------- 連線 ----------
 
+    def _auth(self) -> dict:
+        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+
     async def negotiate(self, client: httpx.AsyncClient) -> tuple[str, str]:
-        headers = {"User-Agent": USER_AGENT}
+        headers = {"User-Agent": USER_AGENT, **self._auth()}
         r = await client.options(f"{HTTP_URL}/negotiate", headers=headers)
         cookie = ""
         m = re.search(r"AWSALBCORS=([^;]+)", r.headers.get("set-cookie", ""))
@@ -71,6 +88,8 @@ class LiveTiming:
             cookie = f"AWSALBCORS={m.group(1)}"  # 負載平衡器的連線黏著 cookie
             headers["Cookie"] = cookie
         r = await client.post(f"{HTTP_URL}/negotiate?negotiateVersion=1", headers=headers)
+        if r.status_code in (401, 403):
+            raise RuntimeError(f"negotiate HTTP {r.status_code}：官方要求登入，或 token 已過期（{r.text[:120]}）")
         if r.status_code != 200:
             raise RuntimeError(f"negotiate HTTP {r.status_code}: {r.text[:200]}")
         return r.json()["connectionToken"], cookie
@@ -81,7 +100,7 @@ class LiveTiming:
         from urllib.parse import quote
 
         token, cookie = await self.negotiate(client)
-        headers = {"Cookie": cookie} if cookie else {}
+        headers = {**({"Cookie": cookie} if cookie else {}), **self._auth()}
         async with websockets.connect(f"{WS_URL}?id={quote(token, safe='')}", additional_headers=headers,
                                       user_agent_header=USER_AGENT, open_timeout=timeout, max_size=2 ** 24) as ws:
             await ws.send(json.dumps({"protocol": "json", "version": 1}) + RS)
@@ -139,6 +158,11 @@ class LiveTiming:
                 finally:
                     self.connected = False
                 await asyncio.sleep(10)
+
+    def status(self) -> dict:
+        exp = token_expiry(self.token) if self.token else None
+        return {"token": bool(self.token), "token_expires": exp, "connected": self.connected,
+                "last": self.last, "error": self.error}
 
     @property
     def fresh(self) -> bool:
