@@ -13,8 +13,8 @@ def test_frame_size_and_pages():
     now = datetime.now(CFG.tz)
     games = demo_games(CFG)
     pages = playlist.build(r, CFG, games, now)
-    # 5 場 → 2 頁總覽 + 5 頁單場
-    assert [p.kind for p in pages].count("game") == 5
+    # 6 場 → 2 頁總覽 + 6 頁單場
+    assert [p.kind for p in pages].count("game") == 6
     assert [p.kind for p in pages].count("overview") == 2
     for p in pages:
         assert len(Renderer.rgb565(p.image)) == 128 * 64 * 2

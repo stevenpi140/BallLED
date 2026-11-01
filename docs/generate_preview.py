@@ -2,7 +2,7 @@
 
     python docs/generate_preview.py
 
-排成 3 欄 × 2 列：總覽、MLB 比賽中、NBA 比賽中、中職賽前、中職終場（含 RHE）、TPBL 賽前。
+排成 3 欄 × 2 列：總覽、MLB 比賽中、NBA 比賽中、中職賽前、中職終場（含 RHE）、F1 正賽中。
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def main():
         r.game(by_league["NBA"], now),
         r.game(by_league["CPBL"], now),
         r.game(final, now),
-        r.game(by_league["TPBL"], now),
+        r.game(by_league["F1"], now),
     ]
     tiles = [Renderer.led_preview(img, PITCH) for img in images]
     tw, th = tiles[0].size

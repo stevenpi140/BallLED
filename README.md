@@ -1,4 +1,4 @@
-# BallLED 點陣比分看板（中職／MLB／NBA／TPBL／PLG）
+# BallLED 點陣比分看板（中職／MLB／NBA／TPBL／PLG／F1）
 
 用 ESP32 + HUB75 全彩 LED 點陣面板做的桌上比分看板。它會顯示今天你追蹤的球隊有哪些比賽，比賽進行中每 2 秒更新一次比分（中職官網是 5 秒，改用野球革命時是 10 秒）。棒球還會顯示安打數和失誤數（RHE）。
 
@@ -226,6 +226,7 @@ pio run -e waveshare_s3_ota -t upload    # 其他板子：trinity_ota / esp32dev
   - 棒球比賽中：會顯示局數、出局燈、壘包，進攻方比分旁有黃色小三角形。
   - 未開打：會顯示開打時間、倒數時間和先發投手。
   - 終場：輸球那隊會變暗。
+- **F1**：總覽頁顯示大獎賽、領先車手代碼、賽段和圈數（`墨西哥  VER  正賽 L34`）；單場頁顯示前三名的名次、車手代碼、車隊和「第 34/71 圈」。預設顯示正賽、衝刺賽、排位賽、衝刺排位，可以在 `config.yaml` 的 `leagues.f1.sessions` 調整（加 `practice` 就會顯示練習賽）。
 - **沒比賽時**：顯示大時鐘和日期。
 - 夜間（預設 23:30–07:00）自動調暗；有比賽進行中時則維持正常亮度。
 
@@ -238,6 +239,7 @@ pio run -e waveshare_s3_ota -t upload    # 其他板子：trinity_ota / esp32dev
 | 中職 | 主要：中職官網 `cpbl.com.tw` 的 `/schedule/getgamedatas`（賽程）與 `/box/getlive`（比分、RHE、局數、出局、壘包）；備援：野球革命 Rebas `rebas.tw/api` | 中，官網前端使用的 JSON，未公開文件化。**官網只有台灣的網路連得上**，從國外機房會被 HiNet CDN 回 404，這時會自動改用野球革命 |
 | TPBL | `api.tpbl.basketball`（官網前端使用的 API） | 中，未公開文件化 |
 | PLG | `pleagueofficial.com` 賽程頁 HTML ＋ `/api/boxscore.preciser.php` | 中低，解析 HTML，官網改版就要調整 |
+| F1 | ESPN `site.api.espn.com` racing/f1 scoreboard：賽程、各賽段狀態、目前圈數、名次 | 高，非官方但和 NBA 同一套；沒有時間差和車隊，車隊用 `teams.py` 的 2026 車手名單對照 |
 
 所有來源都是公開網頁背後的資料，請保持合理的更新頻率。預設比賽中 2 秒、30 分鐘內要開打 1 分鐘、平時 10 分鐘：
 

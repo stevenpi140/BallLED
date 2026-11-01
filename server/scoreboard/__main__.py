@@ -84,6 +84,10 @@ async def _probe(cfg: Config, which: list[str], day: date, out: Path):
                 )
                 print(f"{cls.name:5} OK，{len(games)} 場")
                 for g in games:
+                    if g.race is not None:
+                        top = " ".join(f"{d.pos}.{d.code}" for d in g.race.drivers[:5]) or "（還沒有名次）"
+                        print(f"      {g.start:%H:%M} F1 {g.race.gp} {g.race.session}  [{g.status_text()}]  {top}")
+                        continue
                     rhe = ""
                     if g.away.hits is not None:
                         rhe = f"  H {g.away.hits}-{g.home.hits} E {g.away.errors}-{g.home.errors}"

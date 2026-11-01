@@ -41,6 +41,10 @@ leagues:
   plg:
     enabled: true
     teams: []
+  f1:
+    enabled: true
+    # 要顯示哪些賽段：race 正賽、sprint 衝刺賽、qualifying 排位賽、sprint_qualifying 衝刺排位、practice 練習賽
+    sessions: [race, sprint, qualifying, sprint_qualifying]
 
 # 官方隊名 -> 你想顯示的短名（覆寫自動縮寫）
 aliases: {}

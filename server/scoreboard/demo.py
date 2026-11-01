@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from .config import Config
-from .models import Game, TeamLine
-from .teams import CPBL_TEAMS, TPBL_TEAMS, PLG_TEAMS, match_tw_team, mlb_team, nba_team
+from .models import Driver, Game, Race, TeamLine
+from .teams import CPBL_TEAMS, TPBL_TEAMS, PLG_TEAMS, f1_team, match_tw_team, mlb_team, nba_team
 
 
 def _tw(table, full, score=None, pitcher=None):
@@ -24,6 +24,11 @@ def _nba(abbr, score):
     return TeamLine(code, zh, code, color, score)
 
 
+def _f1(pos, code):
+    team, color = f1_team("", code)
+    return Driver(pos, code, team, color)
+
+
 def demo_games(cfg: Config) -> list[Game]:
     now = datetime.now(cfg.tz).replace(second=0, microsecond=0)
     return [
@@ -38,4 +43,7 @@ def demo_games(cfg: Config) -> list[Game]:
              _tw(TPBL_TEAMS, "新北國王"), _tw(TPBL_TEAMS, "新竹御嵿攻城獅"), venue="新莊體育館"),
         Game("PLG", "d5", now - timedelta(hours=4), "final",
              _tw(PLG_TEAMS, "臺北富邦勇士", 102), _tw(PLG_TEAMS, "桃園璞園領航猿", 95)),
+        Game("F1", "d6", now - timedelta(minutes=50), "live",
+             TeamLine("F1", "墨西哥", "墨西哥", (235, 235, 240)), TeamLine("race", "正賽", "正賽", (255, 210, 60)),
+             race=Race("墨西哥", "正賽", lap=34, laps=71, drivers=[_f1(1, "VER"), _f1(2, "NOR"), _f1(3, "LEC")])),
     ]

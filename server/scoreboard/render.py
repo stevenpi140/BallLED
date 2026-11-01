@@ -185,6 +185,11 @@ class Renderer:
         for g in games[: self.overview_rows]:
             if g.state == "pre":
                 mid, mid_color = g.start.strftime("%H:%M"), DIM
+            elif g.race is not None and g.state != "postponed":
+                # F1：中間放領先（或冠軍）車手的代碼
+                lead = g.race.drivers[0] if g.race.drivers else None
+                mid = lead.code if lead else "--"
+                mid_color = (lead.color if lead else WHITE) if g.state == "live" else DIM
             elif g.state == "postponed":
                 mid, mid_color = "延賽", DIM
             else:
@@ -221,6 +226,8 @@ class Renderer:
         return (self.h - OVERVIEW_TOP) // OVERVIEW_ROW_H
 
     def game(self, g: Game, now: datetime) -> Image.Image:
+        if g.race is not None:
+            return self.race(g, now)
         img, d = self._canvas()
         lc = LEAGUE_COLORS.get(g.league, WHITE)
         # 第一列：聯盟、賽事標籤、場地
@@ -272,6 +279,43 @@ class Renderer:
         if g.state == "live" and g.is_baseball:
             self._outs(d, sw + 6, y + 6, g.outs)
             self._bases(d, self.w - 12, y + 1, g.bases)
+        return img
+
+    def race(self, g: Game, now: datetime) -> Image.Image:
+        """F1 單場頁：大獎賽、賽段、前三名（名次、車手代碼、車隊）、狀態。"""
+        img, d = self._canvas()
+        r = g.race
+        x = 1 + self.text(d, (1, 0), "F1", self.small, LEAGUE_COLORS.get("F1", WHITE))
+        title = r.gp + "大獎賽"
+        sw = self.tw(r.session, self.small)
+        if x + 4 + self.tw(title, self.small) + 6 + sw > self.w:
+            title = r.gp
+        self.text(d, (x + 4, 0), title, self.small, YELLOW, max_w=self.w - x - 10 - sw)
+        self.text(d, (self.w - 1, 0), r.session, self.small, WHITE, anchor_right=True)
+
+        rows = r.drivers[:3]
+        for i, drv in enumerate(rows):
+            y = 13 + i * 12
+            podium = g.state == "final" and r.session in ("正賽", "衝刺賽")
+            self.text(d, (1, y), str(drv.pos), self.small, YELLOW if podium and i == 0 else DIM)
+            d.rectangle([12, y + 2, 13, y + 11], fill=drv.color)
+            self.text(d, (17, y), drv.code, self.small, drv.color)
+            if drv.gap:
+                self.text(d, (self.w - 1, y), drv.gap, self.small, DIM, anchor_right=True)
+            elif drv.team:
+                self.text(d, (self.w - 1, y), drv.team, self.small, DIM, anchor_right=True)
+        if not rows:
+            msg = "名次開始後顯示" if g.state != "final" else "沒有名次資料"
+            self.text(d, (1, 25), msg, self.small, DIM)
+
+        y = 51
+        color = GREEN if g.state == "live" else (YELLOW if g.state == "pre" else DIM)
+        self.text(d, (1, y), g.status_text(), self.small, color)
+        if g.state == "pre":
+            mins = int((g.start - now).total_seconds() // 60)
+            if 0 < mins < 24 * 60:
+                hint = f"{mins}分後" if mins < 60 else f"{mins // 60}時{mins % 60:02d}分後"
+                self.text(d, (self.w - 1, y), hint, self.small, DIM, anchor_right=True)
         return img
 
     def _outs(self, d, x, cy, outs):

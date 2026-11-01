@@ -61,7 +61,8 @@ class Aggregator:
     def _filter(self, key: str, games: list[Game]) -> list[Game]:
         return [
             g for g in games
-            if self.cfg.follows(key, g.away.code, g.away.name, g.away.full)
+            if g.race is not None  # F1 這類比賽用 sessions 篩選，不看球隊
+            or self.cfg.follows(key, g.away.code, g.away.name, g.away.full)
             or self.cfg.follows(key, g.home.code, g.home.name, g.home.full)
         ]
 

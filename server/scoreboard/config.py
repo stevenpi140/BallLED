@@ -23,6 +23,7 @@ DEFAULTS = {
         "nba": {"enabled": True, "teams": []},
         "tpbl": {"enabled": True, "teams": []},
         "plg": {"enabled": True, "teams": []},
+        "f1": {"enabled": True, "teams": [], "sessions": ["race", "sprint", "qualifying", "sprint_qualifying"]},
     },
     "aliases": {},
     "chime": {

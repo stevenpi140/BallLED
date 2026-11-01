@@ -316,3 +316,45 @@ def test_live_poll_interval_per_league():
     live = [g for g in demo_games(CFG) if g.state == "live"]
     assert agg._interval(MLB(), live) == 2
     assert agg._interval(CPBL(), live) == 5  # 官網單場資料含整場逐球紀錄，最快 5 秒
+
+
+def _f1_comp(cid, abbr, start, state, period, order=None):
+    names = ["Max Verstappen", "Lando Norris", "Charles Leclerc", "Nico Hülkenberg"]
+    comps = []
+    for i, n in enumerate(names):
+        x = {"id": str(i), "type": "athlete", "winner": bool(order and i == 0), "athlete": {"fullName": n}}
+        if order:
+            x["order"] = order[i]
+        comps.append(x)
+    return {"id": cid, "type": {"abbreviation": abbr}, "date": start, "startDate": start,
+            "status": {"period": period, "type": {"state": state, "name": "STATUS_X", "description": state}},
+            "competitors": comps}
+
+
+def test_f1_espn_sessions():
+    from scoreboard.leagues import f1
+
+    data = {"events": [{"name": "Mexico City Grand Prix", "competitions": [
+        _f1_comp("1", "FP3", "2026-10-31T17:30Z", "post", 26, [1, 2, 3, 4]),          # 練習賽預設不顯示
+        _f1_comp("2", "Qual", "2026-10-31T21:00Z", "post", 20, [3, 1, 2, 4]),          # 台灣 11/1 05:00
+        _f1_comp("3", "Race", "2026-11-01T20:00Z", "in", 34, [2, 1, 4, 3]),            # 台灣 11/2 04:00
+    ]}]}
+    q = f1.parse(data, CFG, date(2026, 11, 1))
+    assert len(q) == 1 and q[0].race.session == "排位賽" and q[0].state == "final"
+    assert [d.code for d in q[0].race.drivers] == ["NOR", "LEC", "VER", "HUL"]
+    race = f1.parse(data, CFG, date(2026, 11, 2))[0]
+    assert race.state == "live" and race.race.lap == 34 and race.race.laps == 71
+    assert race.status_text() == "第 34/71 圈" and race.short_status() == "L34"
+    lead = race.race.drivers[0]
+    assert (lead.code, lead.team) == ("NOR", "麥拉倫")
+    assert (race.away.name, race.home.name) == ("墨西哥", "正賽")
+
+
+def test_f1_pre_race_has_no_order():
+    from scoreboard.leagues import f1
+
+    data = {"events": [{"name": "Las Vegas Grand Prix", "competitions": [
+        _f1_comp("9", "Race", "2026-11-21T04:00Z", "pre", 0)]}]}
+    g = f1.parse(data, CFG, date(2026, 11, 21))[0]
+    assert g.state == "pre" and g.race.drivers == [] and g.race.gp == "拉斯維加斯" and g.away.name == "賭城"
+    assert g.status_text() == "12:00 開始"

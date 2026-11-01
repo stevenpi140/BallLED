@@ -157,3 +157,71 @@ def nba_team(espn_abbr: str, fallback_name: str = ""):
         zh, color = NBA_TEAMS[abbr]
         return abbr, zh, led_color(hex_rgb(color))
     return abbr, fallback_name[:6] or abbr, (230, 230, 230)
+
+
+# ---------- F1 ----------
+
+# 大獎賽名稱關鍵字 → (中文全名, 總覽頁用的 3 字內短名, 正賽總圈數)。比對時由上往下，越特定的放越前面。
+# ESPN 只給目前圈數，總圈數照各賽道的正賽圈數填（新賽道不確定就填 None，畫面只顯示目前圈數）
+F1_GP = [
+    ("Las Vegas", "拉斯維加斯", "賭城", 50), ("Miami", "邁阿密", "邁阿密", 57), ("United States", "美國", "美國", 56),
+    ("Mexico", "墨西哥", "墨西哥", 71), ("São Paulo", "巴西", "巴西", 71), ("Sao Paulo", "巴西", "巴西", 71),
+    ("Brazil", "巴西", "巴西", 71), ("Qatar", "卡達", "卡達", 57), ("Abu Dhabi", "阿布達比", "阿聯酋", 58),
+    ("Australia", "澳洲", "澳洲", 58), ("Chin", "中國", "中國", 56), ("Japan", "日本", "日本", 53),
+    ("Bahrain", "巴林", "巴林", 57), ("Saudi", "沙烏地", "沙烏地", 50), ("Canad", "加拿大", "加拿大", 70),
+    ("Monaco", "摩納哥", "摩納哥", 78), ("Barcelona", "西班牙", "西班牙", 66), ("Spanish", "西班牙", "西班牙", 66),
+    ("Madrid", "馬德里", "馬德里", None), ("Austria", "奧地利", "奧地利", 71), ("British", "英國", "英國", 52),
+    ("Belgi", "比利時", "比利時", 44), ("Hungar", "匈牙利", "匈牙利", 70), ("Dutch", "荷蘭", "荷蘭", 72),
+    ("Ital", "義大利", "義大利", 53), ("Azerbaijan", "亞塞拜然", "巴庫", 51), ("Singapore", "新加坡", "新加坡", 62),
+]
+
+# 賽段代碼 → (中文, 總覽頁短名, config 用的名稱)
+F1_SESSIONS = {
+    "Race": ("正賽", "正賽", "race"), "Qual": ("排位賽", "排位", "qualifying"),
+    "Sprint": ("衝刺賽", "衝刺", "sprint"), "SS": ("衝刺排位", "衝排", "sprint_qualifying"),
+    "SQ": ("衝刺排位", "衝排", "sprint_qualifying"),
+    "FP1": ("一練", "一練", "practice"), "FP2": ("二練", "二練", "practice"), "FP3": ("三練", "三練", "practice"),
+}
+
+# 車隊關鍵字 → (中文短名, 代表色)
+F1_TEAMS = [
+    ("McLaren", "麥拉倫", "#FF8000"), ("Ferrari", "法拉利", "#E8002D"), ("Red Bull", "紅牛", "#3671C6"),
+    ("Mercedes", "賓士", "#27F4D2"), ("Aston", "奧斯頓", "#229971"), ("Alpine", "雅爾派", "#0093CC"),
+    ("Williams", "威廉斯", "#64C4FF"), ("Racing Bulls", "小牛", "#6692FF"), ("RB", "小牛", "#6692FF"),
+    ("Haas", "哈斯", "#B6BABD"), ("Audi", "奧迪", "#9AA0A6"), ("Sauber", "奧迪", "#9AA0A6"), ("Cadillac", "凱迪拉克", "#D4AF37"),
+]
+
+# 資料來源沒給車隊時，用車手代碼對照（2026 車手名單；有人換隊要更新這裡）
+F1_DRIVER_TEAM = {
+    "VER": "Red Bull", "HAD": "Red Bull", "NOR": "McLaren", "PIA": "McLaren", "LEC": "Ferrari", "HAM": "Ferrari",
+    "RUS": "Mercedes", "ANT": "Mercedes", "ALO": "Aston", "STR": "Aston", "GAS": "Alpine", "COL": "Alpine",
+    "ALB": "Williams", "SAI": "Williams", "LAW": "Racing Bulls", "LIN": "Racing Bulls", "OCO": "Haas", "BEA": "Haas",
+    "HUL": "Audi", "BOR": "Audi", "PER": "Cadillac", "BOT": "Cadillac",
+}
+
+
+def f1_gp(name: str) -> tuple[str, str, int | None]:
+    """回傳 (中文名, 短名, 正賽總圈數)。"""
+    for kw, full, short, laps in F1_GP:
+        if kw.lower() in name.lower():
+            return full, short, laps
+    base = name.replace("Grand Prix", "").strip()
+    return base, base[:3], None
+
+
+def f1_driver_code(full_name: str) -> str:
+    """「Max Verstappen」→ VER；變音符號去掉（Hülkenberg → HUL、Pérez → PER）。"""
+    import unicodedata
+
+    last = (full_name.strip().split() or [""])[-1]
+    ascii_last = unicodedata.normalize("NFKD", last).encode("ascii", "ignore").decode()
+    return ascii_last[:3].upper()
+
+
+def f1_team(team_name: str = "", driver_code: str = "") -> tuple[str, tuple[int, int, int]]:
+    """回傳 (車隊中文短名, LED 顏色)。"""
+    name = team_name or F1_DRIVER_TEAM.get(driver_code, "")
+    for kw, zh, color in F1_TEAMS:
+        if kw.lower() in name.lower():
+            return zh, led_color(hex_rgb(color))
+    return "", (230, 230, 230)
