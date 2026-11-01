@@ -196,7 +196,7 @@ async def _diagnose(out: Path):
 
 F1_URLS = [
     "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard",
-    "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard?dates=20261101",
+    "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard?dates=20261025",
     "https://api.jolpi.ca/ergast/f1/current.json",
     "https://api.jolpi.ca/ergast/f1/current/last/results.json",
     "https://api.jolpi.ca/ergast/f1/current/last/qualifying.json",
@@ -234,6 +234,12 @@ async def _diagnose_f1(client, raw_dir: Path) -> None:
                     print("      comp:", c.get("type"), c.get("date"), (c.get("status") or {}).get("type", {}).get("name"),
                           "period", (c.get("status") or {}).get("period"), "competitors", len(c.get("competitors", [])))
                 comps = ev.get("competitions") or []
+                done = [c for c in comps if (c.get("status") or {}).get("type", {}).get("completed")]
+                if done:
+                    q = done[-1]
+                    print("      已結束賽段", q.get("type"), "status：", json.dumps(q.get("status"), ensure_ascii=False)[:600])
+                    for x in sorted(q.get("competitors", []), key=lambda x: x.get("order", 99))[:3]:
+                        print("        車手：", json.dumps(x, ensure_ascii=False)[:1200])
                 if comps:
                     c = comps[-1]
                     print("      competition 欄位：", json.dumps(shape({k: v for k, v in c.items() if k != "competitors"}), ensure_ascii=False)[:1500])
