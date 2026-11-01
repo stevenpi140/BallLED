@@ -64,6 +64,47 @@ def token_expiry(token: str) -> float | None:
         return None
 
 
+JWT_RE = re.compile(r"eyJ[\w-]+\.[\w-]+\.[\w-]+")
+
+
+def extract_token(text: str) -> str | None:
+    """從瀏覽器複製的 login-session cookie 值（網址編碼過的 JSON）或 token 本身，取出 subscriptionToken。"""
+    from urllib.parse import unquote
+
+    s = text.strip().strip('"').strip("'")
+    for _ in range(3):  # cookie 值可能被編碼不只一次
+        m = re.search(r'"subscriptionToken"\s*:\s*"([^"]+)"', s)
+        if m:
+            return m.group(1)
+        s2 = unquote(s)
+        if s2 == s:
+            break
+        s = s2
+    m = JWT_RE.search(s)
+    return m.group(0) if m else None
+
+
+def set_config_token(path, token: str) -> bool:
+    """把 token 寫進 config.yaml 的 leagues.f1.live_token（保留檔案裡其他內容與註解）。"""
+    from pathlib import Path
+
+    p = Path(path)
+    if not p.exists():
+        return False
+    text = p.read_text(encoding="utf-8")
+    line = re.compile(r'^(\s*live_token:\s*).*$', re.M)
+    if line.search(text):
+        text = line.sub(lambda m: f'{m.group(1)}"{token}"', text, count=1)
+    else:
+        f1 = re.search(r"^(\s*)f1:\s*$", text, re.M)
+        if not f1:
+            return False
+        indent = f1.group(1) + "  "
+        text = text[: f1.end()] + f'\n{indent}live_token: "{token}"' + text[f1.end():]
+    p.write_text(text, encoding="utf-8")
+    return True
+
+
 class LiveTiming:
     def __init__(self, token: str = ""):
         self.token = token.strip()

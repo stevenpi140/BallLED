@@ -4,6 +4,7 @@
   python -m scoreboard preview --demo   用假資料輸出預覽 PNG（不需網路）
   python -m scoreboard preview          抓今天的真實資料輸出預覽 PNG
   python -m scoreboard probe cpbl       把某聯盟的原始回應存成 JSON，介面改版時用來除錯
+  python -m scoreboard f1-token         貼上 formula1.com 的 cookie，把 F1 即時計時用的 token 寫進設定檔
 """
 
 from __future__ import annotations
@@ -292,6 +293,40 @@ def cmd_probe(a):
         asyncio.run(_diagnose(Path(a.out), cfg))
 
 
+def cmd_f1_token(a):
+    """貼上瀏覽器裡 login-session cookie 的值，自動取出 token 寫進 config.yaml。"""
+    import getpass
+    from datetime import datetime
+
+    from .leagues.f1_live import extract_token, set_config_token, token_expiry
+
+    if a.from_file:
+        raw = Path(a.from_file).read_text(encoding="utf-8")
+    else:
+        print("貼上 formula1.com 的 login-session cookie 值（或 token 本身），按 Enter。")
+        print("為了安全，貼上的內容不會顯示在畫面上。")
+        raw = getpass.getpass("> ")
+    token = extract_token(raw)
+    if not token:
+        print("找不到 token：請確認複製的是 login-session 這個 cookie 的「值」（Value）整段。")
+        raise SystemExit(1)
+    exp = token_expiry(token)
+    if exp:
+        left = exp - datetime.now().timestamp()
+        when = datetime.fromtimestamp(exp).strftime("%Y-%m-%d %H:%M")
+        if left <= 0:
+            print(f"這個 token 已經在 {when} 過期了，請重新登入 formula1.com 再複製一次。")
+            raise SystemExit(1)
+        print(f"token 有效，到期時間 {when}（還有 {left / 86400:.1f} 天）。")
+    if set_config_token(a.config, token):
+        print(f"已寫入 {a.config} 的 leagues.f1.live_token。重開伺服器後生效。")
+        print("測試連線：python -m scoreboard probe f1 --diagnose")
+    else:
+        print(f"沒辦法自動寫入 {a.config}（檔案不存在或沒有 f1 區段）。")
+        print("請先 copy config.example.yaml config.yaml，再執行一次這個指令。")
+        raise SystemExit(1)
+
+
 def main():
     ap = argparse.ArgumentParser(prog="scoreboard")
     ap.add_argument("--config", default="config.yaml")
@@ -314,6 +349,10 @@ def main():
     pr.add_argument("--out", default="probe")
     pr.add_argument("--diagnose", action="store_true", help="另外測試幾個備用網址")
     pr.set_defaults(fn=cmd_probe)
+
+    t = sub.add_parser("f1-token", help="把 F1 帳號的 token 寫進 config.yaml")
+    t.add_argument("--from-file", help="從文字檔讀取 cookie 值（終端機貼不下時用）")
+    t.set_defaults(fn=cmd_f1_token)
 
     a = ap.parse_args()
     a.fn(a)

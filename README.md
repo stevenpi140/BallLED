@@ -232,20 +232,13 @@ pio run -e waveshare_s3_ota -t upload    # 其他板子：trinity_ota / esp32dev
 
 ### F1 官方即時計時（選用）
 
-預設的 F1 資料來自 ESPN，只有名次和圈數。想要「+1.234」這種和第一名的時間差，可以讓伺服器用**你自己的 F1 帳號**（免費帳號即可）連 F1 官方即時計時：
+預設的 F1 資料來自 ESPN，只有名次和圈數。想要「+1.234」這種和第一名的時間差，可以讓伺服器用**你自己的 F1 帳號**（免費帳號即可）連 F1 官方即時計時。完整步驟見 **[docs/f1-live-timing.md](docs/f1-live-timing.md)**，簡單來說：
 
-1. 用電腦瀏覽器登入 formula1.com。
-2. 按 F12 開發者工具 → Application（應用程式）→ Cookies → `https://www.formula1.com`，找到 `login-session` 這個 cookie。
-3. 它的值是一段網址編碼過的文字，裡面有 `"subscriptionToken":"eyJ……"`，複製引號裡 `eyJ` 開頭的那一長串。
-4. 貼到 `config.yaml` 的 `leagues.f1.live_token`，重開伺服器。
-5. 測試：`python -m scoreboard probe f1 --diagnose`，看「F1 官方即時計時」那段有沒有「連線成功」和 token 的到期時間。
+1. 在瀏覽器登入 formula1.com，用開發者工具（F12）複製 `login-session` 這個 cookie 的值。
+2. `python -m scoreboard f1-token`，貼上剛剛複製的值，token 會自動寫進 `config.yaml`。
+3. `python -m scoreboard probe f1 --diagnose` 看到「連線成功」，重開伺服器。
 
-注意：
-
-- token 大約幾天就會過期，過期後重新做 1–4 步。
-- 只有 F1 賽段進行中（或 20 分鐘內開始）才會連線，平常不會連。
-- 連線用 BallLED 自己的身分，不偽裝成官方 App 或網站；官方不接受時就自動改回 ESPN 的名次。
-- token 是你個人帳號的憑證，不要給別人。`config.yaml` 已經設定成不會傳上 GitHub。
+token 大約幾天會過期，過期就重做 1、2 步；沒設定或失效時會自動改回 ESPN。帳號密碼和 token 都不要給別人。
 
 ## 資料來源
 

@@ -407,3 +407,27 @@ def test_f1_enrich_from_livetiming():
     f1.enrich(g, board)
     assert [(d.code, d.gap) for d in g.race.drivers] == [("NOR", ""), ("VER", "+1.234"), ("LEC", "+4.9")]
     assert g.race.drivers[1].team == "紅牛" and g.race.lap == 35 and g.status_text() == "第 35/71 圈"
+
+
+def test_f1_token_extract_and_write(tmp_path):
+    import json as _json
+    from urllib.parse import quote
+
+    from scoreboard.leagues.f1_live import extract_token, set_config_token
+
+    tok = "eyJhbGciOiJSUzI1NiJ9.eyJleHAiOjE3OTM2MDAwMDB9.c2lnbmF0dXJl"
+    cookie = quote(_json.dumps({"data": {"subscriptionStatus": "active", "subscriptionToken": tok}}))
+    assert extract_token(cookie) == tok
+    assert extract_token(quote(cookie)) == tok          # 編碼兩次也找得到
+    assert extract_token(f'  "{tok}" ') == tok          # 直接貼 token 也可以
+    assert extract_token("hello") is None
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text('leagues:\n  f1:\n    enabled: true  # 註解保留\n    live_token: ""\n', encoding="utf-8")
+    assert set_config_token(cfg, tok)
+    text = cfg.read_text(encoding="utf-8")
+    assert f'live_token: "{tok}"' in text and "# 註解保留" in text
+    cfg2 = tmp_path / "c2.yaml"
+    cfg2.write_text("leagues:\n  f1:\n    enabled: true\n", encoding="utf-8")
+    assert set_config_token(cfg2, tok) and f'    live_token: "{tok}"' in cfg2.read_text(encoding="utf-8")
+    assert not set_config_token(tmp_path / "none.yaml", tok)
