@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 
 from ..config import Config
 from ..models import Game, TeamLine
-from ..teams import PLG_TEAMS, match_tw_team
+from ..teams import PLG_FULL, PLG_TEAMS, match_tw_team
 from .base import to_int
 
 BASE = "https://pleagueofficial.com"
@@ -130,8 +130,8 @@ def to_game(r: dict, cfg: Config, now: datetime) -> Game:
         id=r["id"],
         start=start,
         state=state,  # type: ignore[arg-type]
-        away=TeamLine(ac, an, r["away"], acol, r["away_score"] if has_score else None),
-        home=TeamLine(hc, hn, r["home"], hcol, r["home_score"] if has_score else None),
+        away=TeamLine(ac, an, PLG_FULL.get(ac, r["away"]), acol, r["away_score"] if has_score else None),
+        home=TeamLine(hc, hn, PLG_FULL.get(hc, r["home"]), hcol, r["home_score"] if has_score else None),
     )
 
 

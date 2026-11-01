@@ -117,11 +117,21 @@ TPBL_TEAMS: list[tuple[str, str, str, str]] = [
     ("特攻", "DEA", "特攻", "#FFD200"),
 ]
 
+# 2026-27 球季四隊。官網賽程頁只寫簡稱（「方舟」「獵鷹」），完整隊名用 PLG_FULL 補上
 PLG_TEAMS: list[tuple[str, str, str, str]] = [
     ("勇士", "BRAVES", "勇士", "#3D7BF0"),
     ("領航猿", "PILOTS", "領航猿", "#20C0A0"),
-    ("洋基", "YANKEY", "洋基", "#FF5A3A"),
+    ("方舟", "ARK", "方舟", "#FF5A3A"),
+    ("洋基", "ARK", "方舟", "#FF5A3A"),  # 2026/10/29 前叫「洋基工程」
+    ("獵鷹", "GHOSTHAWKS", "獵鷹", "#FFA21A"),
 ]
+
+PLG_FULL = {
+    "BRAVES": "臺北富邦勇士",
+    "PILOTS": "桃園璞園領航猿",
+    "ARK": "洋基工程方舟",
+    "GHOSTHAWKS": "台鋼獵鷹",
+}
 
 _CITY_PREFIX = re.compile(r"^(臺北|台北|新北|桃園|新竹|臺中|台中|臺南|台南|高雄|基隆|福爾摩沙)")
 

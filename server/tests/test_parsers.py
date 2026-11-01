@@ -497,3 +497,14 @@ def test_plg_stale_future_flag_with_score_is_final_without_api():
     # 沒有比分的過期賽程維持原狀，等單場 API 判定
     empty = {**row, "away_score": 0, "home_score": 0}
     assert plg.to_game(empty, CFG, later).state == "pre"
+
+
+def test_plg_team_table_2026_27():
+    row = {"id": "x", "date": date(2026, 11, 1), "time": (17, 0), "away": "方舟", "home": "獵鷹",
+           "away_score": 99, "home_score": 104, "future": False}
+    g = plg.to_game(row, CFG, datetime(2026, 11, 1, 21, 0, tzinfo=CFG.tz))
+    assert (g.away.code, g.away.name, g.away.full) == ("ARK", "方舟", "洋基工程方舟")
+    assert (g.home.code, g.home.name, g.home.full) == ("GHOSTHAWKS", "獵鷹", "台鋼獵鷹")
+    assert g.away.color != (230, 230, 230) and g.home.color != (230, 230, 230)
+    old = dict(row, away="洋基工程")
+    assert plg.to_game(old, CFG, datetime(2026, 11, 1, 21, 0, tzinfo=CFG.tz)).away.code == "ARK"
