@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from datetime import date, datetime, timedelta
@@ -21,6 +22,7 @@ from ..teams import PLG_TEAMS, match_tw_team
 from .base import to_int
 
 BASE = "https://pleagueofficial.com"
+log = logging.getLogger("scoreboard")
 PAGES = ["/schedule-regular-season", "/schedule-playoffs", "/schedule-finals"]
 # 官網賽程頁看不出比賽是否「進行中」，開打後這段時間內都視為比賽中，再由 boxscore 更新比分
 GAME_LENGTH = timedelta(hours=2, minutes=30)
@@ -60,7 +62,8 @@ class PLG:
         now = datetime.now(cfg.tz)
         games = [to_game(r, cfg, now) for r in rows]
         for g in games:
-            if g.state == "live":
+            # 官網當天已結束的賽程也可能仍帶 is-future；開打後以單場 API 狀態為準。
+            if g.start <= now:
                 try:
                     r = await client.get(
                         f"{BASE}/api/boxscore.preciser.php",
@@ -68,8 +71,8 @@ class PLG:
                     )
                     r.raise_for_status()
                     apply_box(g, r.json())
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning("PLG %s 單場資料更新失敗：%s", g.id, e)
         return games
 
 
@@ -135,8 +138,8 @@ def apply_box(g: Game, data: dict):
     a, h = to_int(d.get("score_away")), to_int(d.get("score_home"))
     if a is not None and h is not None and (a + h) > 0:
         g.away.score, g.home.score = a, h
-    status = str(d.get("status") or d.get("game_status") or "")
-    if any(w in status for w in ("結束", "Final", "FINAL", "END")):
+    status = str(d.get("match_status") or d.get("status") or d.get("game_status") or "")
+    if status.strip().lower() in ("complete", "completed", "final", "finished", "end") or "結束" in status:
         g.state = "final"
     q = to_int(d.get("quarter") or d.get("current_quarter"))
     if q:

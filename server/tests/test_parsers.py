@@ -228,6 +228,59 @@ def test_plg_schedule_html():
     assert plg.to_game(rows[0], CFG, during).state == "live"
 
 
+def test_plg_complete_status_overrides_stale_future_flag():
+    # 實際 11/01 G04：賽程仍是 is-future，單場 API 已標 match_status=complete。
+    import asyncio
+
+    now = datetime.now(CFG.tz)
+    row = {"id": "725", "date": (now - timedelta(hours=4)).date(),
+           "time": ((now - timedelta(hours=4)).hour, (now - timedelta(hours=4)).minute),
+           "away": "方舟", "home": "獵鷹", "away_score": 99, "home_score": 104, "future": True}
+    payload = {"error": "", "data": {"score_away": 99, "score_home": 104, "match_status": "complete"}}
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return payload
+
+    class Client:
+        calls = []
+
+        async def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return Response()
+
+    league = plg.PLG()
+
+    async def schedule(client):
+        return [row]
+
+    league._schedule = schedule
+    client = Client()
+    game = asyncio.run(league.fetch(client, CFG, row["date"]))[0]
+    assert len(client.calls) == 1
+    assert game.state == "final" and game.status_text() == "終場"
+    assert (game.away.score, game.home.score) == (99, 104)
+
+
+def test_plg_upcoming_game_does_not_fetch_boxscore():
+    import asyncio
+
+    later = datetime.now(CFG.tz) + timedelta(days=1)
+    row = {"id": "726", "date": later.date(), "time": (17, 0), "away": "方舟", "home": "獵鷹",
+           "away_score": 0, "home_score": 0, "future": True}
+    league = plg.PLG()
+
+    async def schedule(client):
+        return [row]
+
+    league._schedule = schedule
+    game = asyncio.run(league.fetch(None, CFG, row["date"]))[0]
+    assert game.state == "pre" and game.away.score is None
+
+
 def test_follow_filter():
     cfg = Config({**CFG.raw, "leagues": {**CFG.raw["leagues"], "mlb": {"enabled": True, "teams": ["LAD"]},
                                          "cpbl": {"enabled": True, "teams": ["中信"]}}})
