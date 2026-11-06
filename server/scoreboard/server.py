@@ -52,12 +52,13 @@ def _pages():
     now = datetime.now(cfg.tz)
     games = agg.games()
     # 看板每 2 秒就會來抓一次：比賽資料沒變、又在同一分鐘內（開打倒數以分鐘為單位），就沿用上次畫好的頁面
-    key = (now.strftime("%Y-%m-%d %H:%M"), repr(games))
+    tomorrow = agg.showing_tomorrow()  # 今天的比賽都結束了：輪播明天的預告
+    key = (now.strftime("%Y-%m-%d %H:%M"), tomorrow, repr(games))
     if _cache["key"] != key:
         note = ""
         if not games and agg.states and all(s.error and not s.last_ok for s in agg.states):
             note = "資料來源連線失敗"
-        _cache["key"], _cache["pages"] = key, playlist.build(renderer, cfg, games, now, note)
+        _cache["key"], _cache["pages"] = key, playlist.build(renderer, cfg, games, now, note, tomorrow)
     return now, games, _cache["pages"]
 
 
@@ -169,6 +170,7 @@ def api_status():
     return {
         "updated_at": agg.updated_at,
         "games": len(games),
+        "showing": "tomorrow" if agg.showing_tomorrow() else "today",  # tomorrow = 今天比賽都結束，輪播明日預告
         "pages": len(pages),
         "cycle_seconds": sum(p.hold_ms for p in pages) // 1000,  # 輪播一圈多久，每一場都會在這段時間內出現一次
         "leagues": agg.status(),

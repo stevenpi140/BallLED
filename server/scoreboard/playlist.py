@@ -9,7 +9,9 @@ from .models import Game
 from .render import Page, Renderer
 
 
-def build(r: Renderer, cfg: Config, games: list[Game], now: datetime, note: str = "") -> list[Page]:
+def build(r: Renderer, cfg: Config, games: list[Game], now: datetime, note: str = "",
+          tomorrow: bool = False) -> list[Page]:
+    """tomorrow=True：今天的比賽都結束了，games 是明天的賽程（標題顯示「明日」）。"""
     disp = cfg.display
     hold = int(disp["page_seconds"] * 1000)
     live_hold = int(disp["live_page_seconds"] * 1000)
@@ -17,7 +19,7 @@ def build(r: Renderer, cfg: Config, games: list[Game], now: datetime, note: str 
         return [Page("idle", 15000, r.idle(now, note))]
     if len(games) == 1:
         g = games[0]
-        return [_game_page(r, g, now, hold, live_hold)]
+        return [_game_page(r, g, now, hold, live_hold, tomorrow)]
     # 總覽頁和單場頁穿插：總覽(1-4) → 第1-4場 → 總覽(5-8) → 第5-8場 ...
     # 每一圈每一場都會輪到一次，比賽再多也不會漏掉
     pages: list[Page] = []
@@ -25,15 +27,15 @@ def build(r: Renderer, cfg: Config, games: list[Game], now: datetime, note: str 
     chunks = [games[i : i + n] for i in range(0, len(games), n)]
     for i, chunk in enumerate(chunks):
         live = any(g.state == "live" for g in chunk)
-        pages.append(Page("overview", hold, r.overview(chunk, now, i + 1, len(chunks)), live))
+        pages.append(Page("overview", hold, r.overview(chunk, now, i + 1, len(chunks), tomorrow), live))
         for g in chunk:
-            pages.append(_game_page(r, g, now, hold, live_hold))
+            pages.append(_game_page(r, g, now, hold, live_hold, tomorrow))
     return pages
 
 
-def _game_page(r: Renderer, g: Game, now: datetime, hold: int, live_hold: int) -> Page:
+def _game_page(r: Renderer, g: Game, now: datetime, hold: int, live_hold: int, tomorrow: bool = False) -> Page:
     live = g.state == "live"
-    return Page("game", live_hold if live else hold, r.game(g, now), live)
+    return Page("game", live_hold if live else hold, r.game(g, now, tomorrow), live)
 
 
 def _parse_hm(s: str) -> dtime:

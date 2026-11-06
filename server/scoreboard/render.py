@@ -9,7 +9,7 @@ from __future__ import annotations
 import glob
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -175,9 +175,11 @@ class Renderer:
         return {"home_right": home_right, "sep_x": sep_x, "show": show}
 
     # ---------- 頁面 ----------
-    def overview(self, games: list[Game], now: datetime, page: int = 1, pages: int = 1) -> Image.Image:
+    def overview(self, games: list[Game], now: datetime, page: int = 1, pages: int = 1,
+                 tomorrow: bool = False) -> Image.Image:
         img, d = self._canvas()
-        title = f"今日 {now.month}/{now.day}({WEEKDAYS[now.weekday()]})"
+        day = now + timedelta(days=1) if tomorrow else now
+        title = f"{'明日' if tomorrow else '今日'} {day.month}/{day.day}({WEEKDAYS[day.weekday()]})"
         self.text(d, (1, 0), title, self.small, YELLOW)
         if pages > 1:
             self.text(d, (self.w - 1, 0), f"{page}/{pages}", self.small, DIM, anchor_right=True)
@@ -226,9 +228,9 @@ class Renderer:
     def overview_rows(self) -> int:
         return (self.h - OVERVIEW_TOP) // OVERVIEW_ROW_H
 
-    def game(self, g: Game, now: datetime) -> Image.Image:
+    def game(self, g: Game, now: datetime, tomorrow: bool = False) -> Image.Image:
         if g.race is not None:
-            return self.race(g, now)
+            return self.race(g, now, tomorrow)
         img, d = self._canvas()
         lc = LEAGUE_COLORS.get(g.league, WHITE)
         # 第一列：聯盟、賽事標籤、場地
@@ -265,14 +267,16 @@ class Renderer:
                         self.mini(d, RHE_X, y + dy, letter, DIM)
                         self.mini(d, RHE_X + 12, y + dy, str(n), num_color, right=True)
 
-        # 底列：狀態
+        # 底列：狀態（明日預告前面加「明日」）
         y = 51
         status = g.status_text()
+        if tomorrow and g.state == "pre":
+            status = "明日 " + status
         color = GREEN if g.state == "live" else (YELLOW if g.state == "pre" else DIM)
         sw = self.text(d, (1, y), status, self.small, color)
         if g.state == "pre":
             mins = int((g.start - now).total_seconds() // 60)
-            if 0 < mins < 180:
+            if 0 < mins < 180 and not tomorrow:
                 hint = f"{mins}分後" if mins < 60 else f"{mins // 60}時{mins % 60:02d}分後"
                 self.text(d, (self.w - 1, y), hint, self.small, DIM, anchor_right=True)
             elif g.away.pitcher or g.home.pitcher:
@@ -282,7 +286,7 @@ class Renderer:
             self._bases(d, self.w - 12, y + 1, g.bases)
         return img
 
-    def race(self, g: Game, now: datetime) -> Image.Image:
+    def race(self, g: Game, now: datetime, tomorrow: bool = False) -> Image.Image:
         """F1 單場頁：分站（墨西哥站）、賽段、前三名（名次、車手代碼、車隊）、狀態。"""
         img, d = self._canvas()
         r = g.race
@@ -308,8 +312,11 @@ class Renderer:
 
         y = 51
         color = GREEN if g.state == "live" else (YELLOW if g.state == "pre" else DIM)
-        self.text(d, (1, y), g.status_text(), self.small, color)
-        if g.state == "pre":
+        status = g.status_text()
+        if tomorrow and g.state == "pre":
+            status = "明日 " + status
+        self.text(d, (1, y), status, self.small, color)
+        if g.state == "pre" and not tomorrow:
             mins = int((g.start - now).total_seconds() // 60)
             if 0 < mins < 24 * 60:
                 hint = f"{mins}分後" if mins < 60 else f"{mins // 60}時{mins % 60:02d}分後"
