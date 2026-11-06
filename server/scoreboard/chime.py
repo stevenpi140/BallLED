@@ -60,6 +60,10 @@ class Chime:
         """下一次報時的時間（整點剛過 30 秒內也算，讓晚一點來抓畫面的看板還是會播）。"""
         if self._test_at and now - self._test_at < GRACE:
             return self._test_at
+        return self.next_scheduled(now)
+
+    def next_scheduled(self, now: datetime) -> datetime | None:
+        """時間表上的下一個整點（不含測試），整點跑馬燈也用這個時間表。"""
         for offset in range(8):
             d = (now + timedelta(days=offset)).date()
             for h in self.hours(d):

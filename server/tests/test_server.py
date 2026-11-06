@@ -77,3 +77,22 @@ def test_chime_endpoints(monkeypatch, tmp_path):
         r = c.get("/chime.pcm")
         assert r.status_code == 200 and len(r.content) == 9600
         assert c.get("/api/status").json()["chime"]["enabled"]
+
+
+def test_marquee_endpoints(monkeypatch):
+    from scoreboard.chime import Chime
+    from scoreboard.config import Config
+    from scoreboard.marquee import Marquee
+
+    cfg = Config({**server.cfg.raw, "marquee": {**server.cfg.raw["marquee"], "enabled": True}})
+    monkeypatch.setattr(server, "marquee", Marquee(cfg, Chime(cfg), server.renderer))
+    with _client(monkeypatch, demo_games(server.cfg)) as c:
+        assert c.post("/api/marquee/test").json()["ok"]
+        h = c.get("/frame").headers
+        assert h["X-Marquee-In"] == "0" and len(h["X-Marquee-Id"]) == 14
+        r = c.get("/marquee.bin", params={"id": h["X-Marquee-Id"]})
+        w = int(r.headers["X-Marquee-Width"])
+        assert r.status_code == 200 and len(r.content) == w * 64 * 2
+        assert r.headers["X-Marquee-Step-Ms"] == "15" and r.headers["X-Marquee-Repeat"] == "2"
+        assert c.get("/preview/marquee.png").status_code == 200
+        assert c.get("/api/status").json()["marquee"]["enabled"]

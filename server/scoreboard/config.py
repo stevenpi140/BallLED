@@ -36,6 +36,14 @@ DEFAULTS = {
         "holidays": [],
         "workdays": [],
     },
+    # 整點跑馬燈：時段沿用 chime 的 weekday / weekend / holidays / workdays（chime 沒打開也會跑）
+    "marquee": {
+        "enabled": False,
+        "text": "{hour}點了!!",  # {hour} = 0-23，{hour12} = 1-12
+        "color": "rainbow",  # rainbow 彩虹漸層，或 [R, G, B]
+        "step_ms": 15,  # 每往左移 1 點停幾毫秒（越小越快）
+        "repeat": 2,  # 跑幾遍
+    },
 }
 
 

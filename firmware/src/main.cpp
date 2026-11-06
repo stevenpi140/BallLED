@@ -27,6 +27,12 @@ static bool paused = false;
 static int fails = 0;
 static uint8_t brightness = 128;
 
+// 整點跑馬燈：伺服器在畫面回應標頭告訴看板「還有幾毫秒要跑」，時間到再下載長圖、在看板上自己捲動
+static String marqueePendingId;  // 等待中的跑馬燈編號
+static String marqueeLastId;     // 已經跑過的編號（整點後 30 秒內伺服器會重複告知，靠這個避免重跑）
+static uint32_t marqueeDueAt = 0;
+static bool marqueeDue = false;
+
 // ---------- 顯示 ----------
 
 static void setupDisplay() {
@@ -189,6 +195,87 @@ static void setupOta() {
   Serial.printf("OTA ready: %s.local (%s)\n", OTA_HOSTNAME, WiFi.localIP().toString().c_str());
 }
 
+// ---------- 整點跑馬燈 ----------
+
+static void marqueeOnHeaders(long inMs, const String &id) {
+  if (id.isEmpty() || inMs < 0) {
+    marqueeDue = false;
+    return;
+  }
+  if (id == marqueeLastId) return;
+  marqueePendingId = id;
+  marqueeDueAt = millis() + (uint32_t)inMs;  // 每次回應都重新校正倒數
+  marqueeDue = true;
+}
+
+// 時間到就下載長圖並捲動，捲完回傳 true（呼叫端要重新抓畫面）
+static bool runMarquee() {
+  if (!marqueeDue || (int32_t)(millis() - marqueeDueAt) < 0) return false;
+  marqueeDue = false;
+  marqueeLastId = marqueePendingId;
+  if ((int32_t)(millis() - marqueeDueAt) > 60000) return false;  // 晚太久就不跑了
+
+  HTTPClient http;
+  String url = String(serverUrl) + "/marquee.bin?id=" + marqueeLastId;
+  if (!http.begin(url)) return false;
+  const char *keys[] = {"X-Marquee-Step-Ms", "X-Marquee-Repeat"};
+  http.collectHeaders(keys, 2);
+  http.setTimeout(6000);
+  int code = http.GET();
+  int size = http.getSize();
+  const int col = FRAME_H * 2;  // 長圖一欄的位元組數
+  if (code != 200 || size < FRAME_W * col || size % col || size > 512 * 1024) {
+    Serial.printf("marquee: GET %s -> %d (size %d)\n", url.c_str(), code, size);
+    http.end();
+    return false;
+  }
+  uint16_t *strip = (uint16_t *)(psramFound() ? ps_malloc(size) : malloc(size));
+  if (!strip) {
+    Serial.println("marquee: out of memory");
+    http.end();
+    return false;
+  }
+  uint8_t *buf = reinterpret_cast<uint8_t *>(strip);
+  WiFiClient *stream = http.getStreamPtr();
+  size_t got = 0;
+  uint32_t t0 = millis();
+  while (got < (size_t)size && millis() - t0 < 6000) {
+    size_t avail = stream->available();
+    if (avail) {
+      got += stream->readBytes(buf + got, min(avail, (size_t)size - got));
+    } else {
+      delay(1);
+    }
+  }
+  int stepMs = constrain((int)http.header("X-Marquee-Step-Ms").toInt(), 5, 200);
+  int repeat = constrain((int)http.header("X-Marquee-Repeat").toInt(), 1, 10);
+  http.end();
+  if (got != (size_t)size) {
+    free(strip);
+    return false;
+  }
+
+  const int w = size / col;
+  Serial.printf("marquee: %s, %d px wide, %d ms/step x%d\n", marqueeLastId.c_str(), w, stepMs, repeat);
+  for (int r = 0; r < repeat; r++) {
+    uint32_t next = millis();
+    for (int off = 0; off <= w - FRAME_W; off++) {
+      for (int y = 0; y < FRAME_H; y++) {
+        const uint16_t *row = &strip[y * w + off];
+        for (int x = 0; x < FRAME_W; x++) display->drawPixel(x, y, row[x]);
+      }
+      display->flipDMABuffer();
+      ArduinoOTA.handle();
+      chimeLoop(serverUrl);  // 報時和跑馬燈同時開始，聲音在背景播放
+      next += stepMs;
+      int32_t wait = (int32_t)(next - millis());
+      if (wait > 0) delay(wait);
+    }
+  }
+  free(strip);
+  return true;
+}
+
 // ---------- 網路 ----------
 
 // 抓第 p 頁畫面到 frame[]，成功回傳 true，並更新總頁數 / 停留時間 / 重抓間隔 / 亮度
@@ -196,9 +283,9 @@ static bool fetchFrame(int p, uint32_t &holdMs) {
   HTTPClient http;
   String url = String(serverUrl) + "/frame?page=" + p;
   if (!http.begin(url)) return false;
-  const char *keys[] = {"X-Pages", "X-Hold-Ms", "X-Brightness", "X-Refresh-Ms",
-                        "X-Chime-In", "X-Chime-Id", "X-Chime-Ver", "X-Chime-Volume"};
-  http.collectHeaders(keys, 8);
+  const char *keys[] = {"X-Pages",    "X-Hold-Ms",  "X-Brightness",   "X-Refresh-Ms", "X-Chime-In",
+                        "X-Chime-Id", "X-Chime-Ver", "X-Chime-Volume", "X-Marquee-In", "X-Marquee-Id"};
+  http.collectHeaders(keys, 10);
   http.setTimeout(6000);
 
   int code = http.GET();
@@ -235,6 +322,8 @@ static bool fetchFrame(int p, uint32_t &holdMs) {
   String chimeIn = http.header("X-Chime-In");
   chimeOnHeaders(chimeIn.length() ? chimeIn.toInt() : -1, http.header("X-Chime-Id"), http.header("X-Chime-Ver"),
                  http.hasHeader("X-Chime-Volume") ? http.header("X-Chime-Volume").toInt() : -1);
+  String marqueeIn = http.header("X-Marquee-In");
+  marqueeOnHeaders(marqueeIn.length() ? marqueeIn.toInt() : -1, http.header("X-Marquee-Id"));
   int b = http.header("X-Brightness").toInt();
   if (b > 0 && b != brightness) {
     brightness = b;
@@ -275,6 +364,11 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();  // 隨時接受無線更新
   chimeLoop(serverUrl);  // 整點報時：時間到就在背景播放
+  if (runMarquee()) {    // 整點跑馬燈：跑完重新抓目前這頁
+    page = shown;
+    holdUntil = 0;
+    return;
+  }
 
   if (pressed(PIN_BTN_NEXT)) {
     page = (page + 1) % pageCount;

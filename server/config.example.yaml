@@ -64,3 +64,12 @@ chime:
   weekend: [12, 20]     # 假日 12:00～20:00 每個整點
   holidays: []          # 國定假日照假日時段，例：["2026-10-10", "2027-01-01"]
   workdays: []          # 補班日照平日時段，例：["2026-12-26"]
+
+# 整點跑馬燈：每個整點讓畫面從右到左跑一次「15點了!!」。沒有喇叭的板子也能用
+# 時段沿用上面 chime 的 weekday / weekend / holidays / workdays（chime.enabled 關掉也照樣會跑）
+marquee:
+  enabled: true
+  text: "{hour}點了!!"   # {hour} = 0-23，{hour12} = 1-12
+  color: rainbow        # rainbow 彩虹漸層，或 [255, 200, 0] 這種 RGB
+  step_ms: 15           # 每往左移 1 點停幾毫秒（越小越快）
+  repeat: 2             # 跑幾遍

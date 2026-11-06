@@ -6,6 +6,7 @@
   X-Brightness      建議亮度 0-255
   X-Refresh-Ms      這頁有進行中的比賽時，停留期間每隔多久重抓一次（0 = 不用重抓）
   X-Chime-*         整點報時：距離下一次報時的毫秒數、報時編號、音檔版本、音量（見 chime.py）
+  X-Marquee-*       整點跑馬燈：距離下一次跑馬燈的毫秒數、編號（見 marquee.py）
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from . import playlist
 from .aggregator import Aggregator, make_client
 from .chime import Chime
 from .config import Config
+from .marquee import Marquee
 from .render import Renderer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -31,6 +33,7 @@ cfg = Config.load(os.environ.get("SCOREBOARD_CONFIG", "config.yaml"))
 agg = Aggregator(cfg)
 chime = Chime(cfg)
 renderer = Renderer(cfg.display["width"], cfg.display["height"], cfg.display.get("fonts"))
+marquee = Marquee(cfg, chime, renderer)
 
 
 @asynccontextmanager
@@ -74,8 +77,40 @@ def frame(page: int = Query(0, ge=0)):
             "X-Refresh-Ms": str(int(cfg.raw["poll"]["screen_refresh_seconds"] * 1000) if p.live else 0),
             "Cache-Control": "no-store",
             **chime.headers(now),
+            **marquee.headers(now),
         },
     )
+
+
+@app.get("/marquee.bin")
+def marquee_bin(id: str = Query("")):
+    """整點跑馬燈的長圖（RGB565，高度等於畫面高度，寬度 = 檔案大小 / 高度 / 2）。"""
+    img, params = marquee.strip(id)
+    return Response(
+        content=Renderer.rgb565(img),
+        media_type="application/octet-stream",
+        headers={"X-Marquee-Width": str(img.width), "Cache-Control": "no-store", **params},
+    )
+
+
+@app.post("/api/marquee/test")
+def marquee_test():
+    """讓看板下一次來抓畫面時馬上跑一次跑馬燈（不會播聲音）。"""
+    if not marquee.enabled:
+        return JSONResponse({"ok": False, "error": "config.yaml 的 marquee.enabled 還沒打開"}, status_code=400)
+    now = datetime.now(cfg.tz)
+    marquee.test(now)
+    return {"ok": True, "text": marquee.text_for(now.strftime("%Y%m%d%H%M%S"))}
+
+
+@app.get("/preview/marquee.png")
+def preview_marquee(led: bool = True):
+    img, _ = marquee.strip(datetime.now(cfg.tz).strftime("%Y%m%d%H0000"))
+    if led:
+        img = Renderer.led_preview(img)
+    buf = BytesIO()
+    img.save(buf, "PNG")
+    return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/chime.pcm")
@@ -138,6 +173,7 @@ def api_status():
         "cycle_seconds": sum(p.hold_ms for p in pages) // 1000,  # 輪播一圈多久，每一場都會在這段時間內出現一次
         "leagues": agg.status(),
         "chime": _chime_status(),
+        "marquee": _marquee_status(),
     }
 
 
@@ -147,6 +183,14 @@ def _chime_status() -> dict:
     nxt = chime.next_chime(datetime.now(cfg.tz))
     return {"enabled": True, "next": nxt.isoformat() if nxt else None, "error": chime.error,
             "seconds": round(len(chime.pcm() or b"") / 2 / 48000, 1)}
+
+
+def _marquee_status() -> dict:
+    if not marquee.enabled:
+        return {"enabled": False}
+    nxt = marquee.next_at(datetime.now(cfg.tz))
+    return {"enabled": True, "next": nxt.isoformat() if nxt else None,
+            "text": marquee.text_for(nxt.strftime("%Y%m%d%H%M%S")) if nxt else None}
 
 
 @app.post("/api/refresh")
