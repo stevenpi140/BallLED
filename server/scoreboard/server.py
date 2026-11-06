@@ -15,9 +15,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+import time
 from io import BytesIO
 
-from fastapi import FastAPI, Query, Response
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from . import playlist
@@ -28,6 +29,18 @@ from .marquee import Marquee
 from .render import Renderer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+
+class _QuietFrames(logging.Filter):
+    """看板在時鐘頁每秒會抓好幾次畫面：成功的 /frame 不寫進存取紀錄（看板狀態改看 /api/status 的 board）。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args if isinstance(record.args, tuple) else ()
+        return not (len(args) >= 5 and str(args[2]).startswith("/frame") and args[4] == 200)
+
+
+logging.getLogger("uvicorn.access").addFilter(_QuietFrames())
+_board: dict = {}  # 看板最後一次來抓畫面的時間與 IP
 
 cfg = Config.load(os.environ.get("SCOREBOARD_CONFIG", "config.yaml"))
 agg = Aggregator(cfg)
@@ -67,6 +80,9 @@ def _pages():
     return now, games, _cache["pages"]
 
 
+CLOCK_REFRESH_MS = 250  # 比 1 秒短很多，抓圖本身的延遲才不會讓秒數跳號（舊韌體最快 1 秒）
+
+
 def _hold_ms(p, now) -> int:
     """時鐘插播頁停到插播結束為止（最多 15 秒就回來重抓一次，時鐘的分鐘數才會更新）。"""
     if p.kind == "clock":
@@ -75,19 +91,26 @@ def _hold_ms(p, now) -> int:
 
 
 @app.get("/frame")
-def frame(page: int = Query(0, ge=0)):
+def frame(request: Request, page: int = Query(0, ge=0)):
     now, games, pages = _pages()
+    _board.update(last_seen=time.time(), ip=request.client.host if request.client else "", page=page)
     idx = page % len(pages)
     p = pages[idx]
+    image = p.image
+    refresh = int(cfg.raw["poll"]["screen_refresh_seconds"] * 1000) if p.live else 0
+    if p.clock_msg is not None:
+        # 時鐘頁：用現在的時間重畫（含秒），看板停留期間每 0.25 秒重抓一次，秒數才會走
+        image = renderer.idle(now, msg=p.clock_msg)
+        refresh = CLOCK_REFRESH_MS
     return Response(
-        content=Renderer.rgb565(p.image),
+        content=Renderer.rgb565(image),
         media_type="application/octet-stream",
         headers={
             "X-Page": str(idx),
             "X-Pages": str(len(pages)),
             "X-Hold-Ms": str(_hold_ms(p, now)),
             "X-Brightness": str(playlist.brightness(cfg, now, any(g.state == "live" for g in games))),
-            "X-Refresh-Ms": str(int(cfg.raw["poll"]["screen_refresh_seconds"] * 1000) if p.live else 0),
+            "X-Refresh-Ms": str(refresh),
             "Cache-Control": "no-store",
             **chime.headers(now),
             **marquee.headers(now),
@@ -148,7 +171,8 @@ def chime_test():
 @app.get("/preview/{page}.png")
 def preview_png(page: int, led: bool = True):
     _, _, pages = _pages()
-    img = pages[page % len(pages)].image
+    p = pages[page % len(pages)]
+    img = renderer.idle(datetime.now(cfg.tz), msg=p.clock_msg) if p.clock_msg is not None else p.image
     if led:
         img = Renderer.led_preview(img)
     buf = BytesIO()
@@ -183,7 +207,8 @@ def api_status():
         "updated_at": agg.updated_at,
         "games": len(games),
         "showing": "tomorrow" if agg.showing_tomorrow() else "today",
-        "clock_break": playlist.clock_break_ms(cfg, datetime.now(cfg.tz)) > 0,  # 正在時鐘插播  # tomorrow = 今天比賽都結束，輪播明日預告
+        "clock_break": playlist.clock_break_ms(cfg, datetime.now(cfg.tz)) > 0,  # 正在時鐘插播
+        "board": {**_board, "seconds_ago": round(time.time() - _board["last_seen"], 1)} if _board else None,  # tomorrow = 今天比賽都結束，輪播明日預告
         "pages": len(pages),
         "cycle_seconds": sum(p.hold_ms for p in pages) // 1000,  # 輪播一圈多久，每一場都會在這段時間內出現一次
         "leagues": agg.status(),

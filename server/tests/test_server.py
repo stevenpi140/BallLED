@@ -114,3 +114,28 @@ def test_clock_break_endpoint(monkeypatch):
         assert c.get("/frame").headers["X-Hold-Ms"] == "3000"  # 快結束時只停到插播結束
         monkeypatch.setattr(playlist, "clock_break_ms", lambda cfg, now: 0)
         assert int(c.get("/frame").headers["X-Pages"]) > 1  # 插播結束回到比賽輪播
+
+
+def test_clock_pages_tick_every_request(monkeypatch):
+    from datetime import datetime as real_dt
+
+    with _client(monkeypatch, []) as c:  # 沒有比賽：時鐘頁
+        r1 = c.get("/frame")
+        assert r1.headers["X-Refresh-Ms"] == "250"  # 看板停留期間每 0.25 秒重抓，秒數才會走
+        t = [real_dt(2026, 11, 6, 9, 5, 1, tzinfo=server.cfg.tz)]
+
+        class FakeDT(real_dt):
+            @classmethod
+            def now(cls, tz=None):
+                return t[0]
+
+        monkeypatch.setattr(server, "datetime", FakeDT)
+        a = c.get("/frame").content
+        t[0] = t[0].replace(second=2)
+        b = c.get("/frame").content
+        assert a != b  # 同一分鐘內，秒數不同畫面就不同
+        board = c.get("/api/status").json()["board"]
+        assert board["seconds_ago"] < 5
+    # 有比賽、不在插播時段：比賽頁不重抓
+    with _client(monkeypatch, [g for g in demo_games(server.cfg) if g.state == "final"]) as c:
+        assert c.get("/frame").headers["X-Refresh-Ms"] == "0"

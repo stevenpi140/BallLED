@@ -16,7 +16,8 @@ def build(r: Renderer, cfg: Config, games: list[Game], now: datetime, note: str 
     hold = int(disp["page_seconds"] * 1000)
     live_hold = int(disp["live_page_seconds"] * 1000)
     if not games:
-        return [Page("idle", 15000, r.idle(now, note))]
+        msg = note or "今日沒有追蹤的比賽"
+        return [Page("idle", 15000, r.idle(now, msg=msg), clock_msg=msg)]
     if len(games) == 1:
         g = games[0]
         return [_game_page(r, g, now, hold, live_hold, tomorrow)]
@@ -63,7 +64,7 @@ def clock_page(r: Renderer, games: list[Game], now: datetime, tomorrow: bool = F
         msg = f"{'明日' if tomorrow else '今日'}共 {len(games)} 場比賽"
     else:
         msg = ""
-    return Page("clock", 15000, r.idle(now, msg=msg))
+    return Page("clock", 15000, r.idle(now, msg=msg), clock_msg=msg)
 
 
 def _parse_hm(s: str) -> dtime:

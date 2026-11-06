@@ -318,7 +318,7 @@ static bool fetchFrame(int p, uint32_t &holdMs) {
   pageCount = max(1L, http.header("X-Pages").toInt());
   holdMs = max(1000L, http.header("X-Hold-Ms").toInt());
   long r = http.header("X-Refresh-Ms").toInt();
-  refreshMs = r > 0 ? max(1000L, r) : 0;
+  refreshMs = r > 0 ? max(200L, r) : 0;  // 時鐘頁 250ms（秒數才不會跳號），比賽頁 2 秒
   String chimeIn = http.header("X-Chime-In");
   chimeOnHeaders(chimeIn.length() ? chimeIn.toInt() : -1, http.header("X-Chime-Id"), http.header("X-Chime-Ver"),
                  http.hasHeader("X-Chime-Volume") ? http.header("X-Chime-Volume").toInt() : -1);

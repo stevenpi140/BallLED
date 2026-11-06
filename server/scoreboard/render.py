@@ -95,6 +95,7 @@ class Page:
     hold_ms: int
     image: Image.Image
     live: bool = False  # 這頁有進行中的比賽：看板停留期間會定期重抓，比分才會即時更新
+    clock_msg: str | None = None  # 時鐘頁（idle / clock）的底列文字：每次請求都用當下時間重畫，秒數才會走
 
 
 class Renderer:
@@ -348,7 +349,17 @@ class Renderer:
         hhmm = now.strftime("%H:%M")
         scale = 3 if self.w >= 96 else 2
         cw = len(hhmm) * 6 * scale - scale
-        self.digits(d, (self.w - cw) // 2, 4, hhmm, scale, WHITE)
+        # 「時:分」大字，後面接小一號的「:秒」，底部對齊
+        ss = now.strftime(":%S")
+        ss_scale = max(1, scale - 1)
+        sw = len(ss) * 6 * ss_scale - ss_scale
+        gap = ss_scale
+        if cw + gap + sw <= self.w:
+            x = (self.w - cw - gap - sw) // 2
+            self.digits(d, x, 4, hhmm, scale, WHITE)
+            self.digits(d, x + cw + gap, 4 + 7 * (scale - ss_scale), ss, ss_scale, LIGHT)
+        else:  # 太窄放不下秒數：只顯示時:分
+            self.digits(d, (self.w - cw) // 2, 4, hhmm, scale, WHITE)
         date_s = f"{now.month}/{now.day}（{WEEKDAYS[now.weekday()]}）"
         self.text(d, ((self.w - self.tw(date_s, self.small)) // 2, 7 * scale + 9), date_s, self.small, YELLOW)
         msg = (note or "今日沒有追蹤的比賽") if msg is None else msg
