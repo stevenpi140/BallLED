@@ -5,6 +5,7 @@
   python -m scoreboard preview          抓今天的真實資料輸出預覽 PNG
   python -m scoreboard probe cpbl       把某聯盟的原始回應存成 JSON，介面改版時用來除錯
   python -m scoreboard f1-token         貼上 formula1.com 的 cookie，把 F1 即時計時用的 token 寫進設定檔
+  python -m scoreboard f1-token --from-chrome   從專用 debug Chrome 自動讀 cookie、寫入設定檔（用完預設關掉該 Chrome）
 """
 
 from __future__ import annotations
@@ -294,11 +295,30 @@ def cmd_probe(a):
 
 
 def cmd_f1_token(a):
-    """貼上瀏覽器裡 login-session cookie 的值，自動取出 token 寫進 config.yaml。"""
+    """貼上瀏覽器裡 login-session cookie 的值，自動取出 token 寫進 config.yaml；或 --from-chrome 自動從專用 debug Chrome 讀。"""
     import getpass
     from datetime import datetime
 
     from .leagues.f1_live import extract_token, set_config_token, token_expiry
+
+    if getattr(a, "from_chrome", False):
+        from .leagues.f1_chrome import ChromeTokenError, launch_instructions, refresh_live_token
+
+        try:
+            token = refresh_live_token(a.config, port=a.cdp_port, launch=not a.no_launch,
+                                       close_when_done=not getattr(a, "keep_open", False))
+        except ChromeTokenError as e:
+            print(f"從 Chrome 讀 token 失敗：{e}\n\n{launch_instructions(a.cdp_port)}")
+            raise SystemExit(1)
+        exp = token_expiry(token)
+        if exp:
+            left = exp - datetime.now().timestamp()
+            when = datetime.fromtimestamp(exp).strftime("%Y-%m-%d %H:%M")
+            print(f"已從 Chrome 寫入 {a.config} 的 leagues.f1.live_token。到期 {when}（還有 {left / 86400:.1f} 天）。")
+        else:
+            print(f"已從 Chrome 寫入 {a.config} 的 leagues.f1.live_token。")
+        print("這次由你開的 debug Chrome 已預設關閉（可用 --keep-open 保留）。serve 偵測到過期時也會自動開、自動關。")
+        return
 
     if a.from_file:
         raw = Path(a.from_file).read_text(encoding="utf-8")
@@ -352,6 +372,12 @@ def main():
 
     t = sub.add_parser("f1-token", help="把 F1 帳號的 token 寫進 config.yaml")
     t.add_argument("--from-file", help="從文字檔讀取 cookie 值（終端機貼不下時用）")
+    t.add_argument("--from-chrome", action="store_true",
+                   help="從專用 debug Chrome（Chrome 136+ 不能直接讀預設個人檔案）自動讀 formula1.com 的 login-session")
+    t.add_argument("--cdp-port", type=int, default=9222, help="專用 debug Chrome 的 remote-debugging-port（預設 9222）")
+    t.add_argument("--no-launch", action="store_true", help="不要自動啟動 Chrome，只連已在跑的 CDP")
+    t.add_argument("--keep-open", action="store_true",
+                   help="讀完後保留 debug Chrome（預設若這次由本指令啟動，會自動關閉）")
     t.set_defaults(fn=cmd_f1_token)
 
     a = ap.parse_args()

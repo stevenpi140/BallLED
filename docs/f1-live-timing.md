@@ -98,11 +98,42 @@ F1 官方即時計時（BallLED 自己的 User-Agent，不偽裝）：
 
 ---
 
+## 自動更新（Chrome 136+）
+
+Chrome 136 之後不能用 CDP 讀你平常的 Chrome 個人檔案。BallLED 用**專用 profile**（只讀 formula1 的 `login-session`）：
+
+```powershell
+# 只需做一次：登入公式1，讓登入狀態存在這個 profile 裡
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir="$env:LOCALAPPDATA\BallLED\ChromeF1Debug" `
+  --no-first-run --no-default-browser-check https://www.formula1.com/
+# 在裡面登入後可關掉視窗
+
+cd BallLED\server
+.venv\Scripts\activate
+python -m scoreboard f1-token --from-chrome
+```
+
+之後**不必一直開著**：F1 賽段快開始／進行中時，若 token 已過期或 10 分鐘內到期（或連線遇到 401/403），伺服器會自己：
+
+1. 短暫開啟專用 debug Chrome  
+2. 只讀 `www.formula1.com` 的 `login-session`  
+3. 寫回 `config.yaml`  
+4. **用完自動關閉該 Chrome**（只關這次由 BallLED 開的那個；本來就在跑的不會強制關）
+
+`python -m scoreboard f1-token --from-chrome` 同樣預設用完就關；加 `--keep-open` 才會留著。
+
+- 你平常的用瀏覽不受影響；不會讀密碼、歷史或其他網站。
+- 專用 profile 的登入狀態會保留在 `%LOCALAPPDATA%\BallLED\ChromeF1Debug`，下次重開通常不用再手動登入。
+- 停用自動開關：`BALLLED_F1_AUTO_REFRESH=0`；port：`BALLLED_F1_CDP_PORT`（預設 9222）。
+
+
 ## token 過期了怎麼辦
 
 token 大約幾天就會過期。過期後，看板的 F1 會自動改回 ESPN 的名次（沒有時間差），其他都正常。
 
-要恢復時間差，重做**步驟 1～3**就好：登入、複製 cookie、執行 `f1-token`。比賽週末前做一次最保險。
+若已啟用 session：賽段快開始／進行中且 token 快過期或已過期，伺服器會短暫開啟、更新、關閉專用 debug Chrome；或遇到 401/403 時同樣處理。否則重做登入後執行一次 `f1-token --from-chrome`。比賽週末前確認專用 profile 仍能登入即可。
 
 ---
 

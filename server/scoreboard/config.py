@@ -60,13 +60,15 @@ def _merge(base: dict, over: dict) -> dict:
 @dataclass
 class Config:
     raw: dict = field(default_factory=lambda: dict(DEFAULTS))
+    path: str | None = None
 
     @classmethod
     def load(cls, path: str | Path | None) -> "Config":
         data = {}
+        path_s = str(path) if path else None
         if path and Path(path).exists():
             data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-        return cls(_merge(DEFAULTS, data))
+        return cls(_merge(DEFAULTS, data), path=path_s)
 
     @property
     def tz(self) -> ZoneInfo:

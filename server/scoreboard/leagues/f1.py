@@ -14,6 +14,8 @@ F1 官方即時計時（f1_live.py），補上和第一名的時間差、官方�
 
 from __future__ import annotations
 
+import os
+import time
 from datetime import date, datetime, timedelta
 
 import httpx
@@ -35,6 +37,7 @@ class F1:
 
     def __init__(self):
         self.live: LiveTiming | None = None
+        self._last_pre_refresh = 0.0
 
     async def fetch(self, client: httpx.AsyncClient, cfg: Config, day: date) -> list[Game]:
         events: list[dict] = []
@@ -43,15 +46,64 @@ class F1:
             r.raise_for_status()
             events += r.json().get("events", [])
         games = parse({"events": events}, cfg, day)
-        self._use_live(cfg, games)
+        path = getattr(cfg, "path", None) or os.environ.get("SCOREBOARD_CONFIG") or "config.yaml"
+        await self._pre_refresh_if_needed(cfg, games, path)
+        self._use_live(cfg, games, config_path=path)
         return games
 
-    def _use_live(self, cfg: Config, games: list[Game]):
+    async def _pre_refresh_if_needed(self, cfg: Config, games: list[Game], config_path: str):
+        """賽段快開始或進行中，且 token 快過期／已過期時：自動開一次 debug Chrome → 更新 → 關掉。"""
+        if os.environ.get("BALLLED_F1_AUTO_REFRESH", "1").strip().lower() in ("0", "false", "no", "off"):
+            return
+        if time.time() - self._last_pre_refresh < 120:  # 兩分鐘內不要重複開
+            return
+        now = datetime.now(cfg.tz)
+        activeish = any(
+            g.state == "live" or (g.state == "pre" and g.start - now < timedelta(minutes=30))
+            for g in games
+        )
+        if not activeish:
+            return
+        from .f1_live import token_expiry
+
+        token = str(cfg.league("f1").get("live_token") or "").strip()
+        exp = token_expiry(token) if token else None
+        # 已過期，或 10 分鐘內到期：先換再連，避免正賽進行中才 401
+        if exp is not None and exp > time.time() + 10 * 60:
+            return
+        self._last_pre_refresh = time.time()
+        try:
+            from .f1_chrome import refresh_live_token
+            import asyncio
+            cdp_port = int(os.environ.get("BALLLED_F1_CDP_PORT", "9222") or 9222)
+            loop = asyncio.get_running_loop()
+            new_token = await loop.run_in_executor(
+                None,
+                lambda: refresh_live_token(config_path, port=cdp_port, launch=True, close_when_done=True),
+            )
+            if new_token:
+                cfg.raw.setdefault("leagues", {}).setdefault("f1", {})["live_token"] = new_token
+                if self.live is not None:
+                    self.live.token = new_token
+        except Exception as e:
+            # 失敗就維持現況；live 連線時 negotiate 401 還會再試一次
+            import logging
+            logging.getLogger("scoreboard").info("F1 token 賽前自動更新略過：%s: %s", type(e).__name__, e)
+
+    def _use_live(self, cfg: Config, games: list[Game], config_path: str | None = None):
         token = str(cfg.league("f1").get("live_token") or "").strip()
         if not token:
             return
-        if self.live is None or self.live.token != token:
-            self.live = LiveTiming(token)
+        path = config_path or os.environ.get("SCOREBOARD_CONFIG") or "config.yaml"
+        cdp_port = int(os.environ.get("BALLLED_F1_CDP_PORT", "9222") or 9222)
+        if self.live is None:
+            self.live = LiveTiming(token, config_path=path, cdp_port=cdp_port, auto_refresh=True)
+        elif self.live.token != token:
+            # config 被改過（例如自動更新寫回）：換成新 token，並保留自動更新設定
+            self.live.token = token
+            self.live.config_path = path
+            self.live.cdp_port = cdp_port
+            self.live.auto_refresh = True
         now = datetime.now(cfg.tz)
         active = [g for g in games if g.state == "live" or (g.state == "pre" and g.start - now < timedelta(minutes=20))]
         if active:

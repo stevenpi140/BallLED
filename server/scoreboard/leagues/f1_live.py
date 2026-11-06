@@ -7,7 +7,8 @@
 
 和參考專案不同：連線時用 BallLED 自己的 User-Agent，不偽裝成官方 App（BestHTTP）或官網（Origin）。
 官方要求登入時，用你自己 F1 帳號的 subscriptionToken（config.yaml 的 leagues.f1.live_token），
-以 Authorization: Bearer 送出；token 大約幾天會過期，過期要重新從瀏覽器複製。
+以 Authorization: Bearer 送出；token 大約幾天會過期。過期時若啟用自動更新，會從專用 debug Chrome
+讀 formula1.com 的 login-session 重新寫入 config.yaml（見 f1_chrome.py）；否則看板退回 ESPN 名次。
 官方不接受連線的話，這個來源就不用，F1 照樣用 ESPN 的名次。
 
 只在 F1 賽段進行中（或快要開始）時才連線，其他時間不佔用官方伺服器。
@@ -106,8 +107,14 @@ def set_config_token(path, token: str) -> bool:
 
 
 class LiveTiming:
-    def __init__(self, token: str = ""):
+    def __init__(self, token: str = "", *, config_path: str | None = None,
+                 cdp_port: int = 9222, auto_refresh: bool = True):
         self.token = token.strip()
+        self.config_path = config_path
+        self.cdp_port = cdp_port
+        self.auto_refresh = auto_refresh
+        self._refresh_lock = asyncio.Lock()
+        self._last_refresh_try = 0.0
         self.state: dict = {c: {} for c in CHANNELS}
         self.connected = False
         self.last = 0.0
@@ -130,10 +137,42 @@ class LiveTiming:
             headers["Cookie"] = cookie
         r = await client.post(f"{HTTP_URL}/negotiate?negotiateVersion=1", headers=headers)
         if r.status_code in (401, 403):
+            if await self._maybe_refresh_from_chrome():
+                headers = {"User-Agent": USER_AGENT, **self._auth()}
+                if cookie:
+                    headers["Cookie"] = cookie
+                r = await client.post(f"{HTTP_URL}/negotiate?negotiateVersion=1", headers=headers)
+        if r.status_code in (401, 403):
             raise RuntimeError(f"negotiate HTTP {r.status_code}：官方要求登入，或 token 已過期（{r.text[:120]}）")
         if r.status_code != 200:
             raise RuntimeError(f"negotiate HTTP {r.status_code}: {r.text[:200]}")
         return r.json()["connectionToken"], cookie
+
+    async def _maybe_refresh_from_chrome(self) -> bool:
+        """401/403 時，從專用 debug Chrome 重新讀 login-session 並寫回 config.yaml。"""
+        if not self.auto_refresh or not self.config_path:
+            return False
+        if time.time() - self._last_refresh_try < 60:  # 一分鐘內不要連續開 Chrome
+            return False
+        async with self._refresh_lock:
+            if time.time() - self._last_refresh_try < 60:
+                return False
+            self._last_refresh_try = time.time()
+            old = self.token
+            try:
+                from .f1_chrome import refresh_live_token
+                loop = asyncio.get_running_loop()
+                new_token = await loop.run_in_executor(None, lambda: refresh_live_token(
+                    self.config_path, port=self.cdp_port, launch=True))
+            except Exception as e:
+                log.warning("F1 token 自動更新失敗：%s: %s", type(e).__name__, e)
+                self.error = f"token 自動更新失敗：{e}"
+                return False
+            if new_token and new_token != old:
+                self.token = new_token
+                log.info("F1 live_token 已從 Chrome 自動更新")
+                return True
+            return False
 
     async def session(self, client: httpx.AsyncClient, stop_after_snapshot: bool = False, timeout: float = 20):
         """連一次線：握手、訂閱，持續接收直到斷線（或拿到快照就結束，診斷用）。"""
