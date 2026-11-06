@@ -53,13 +53,25 @@ def _pages():
     games = agg.games()
     # 看板每 2 秒就會來抓一次：比賽資料沒變、又在同一分鐘內（開打倒數以分鐘為單位），就沿用上次畫好的頁面
     tomorrow = agg.showing_tomorrow()  # 今天的比賽都結束了：輪播明天的預告
-    key = (now.strftime("%Y-%m-%d %H:%M"), tomorrow, repr(games))
+    clock = playlist.clock_break_ms(cfg, now) > 0  # 每 10 分鐘的時鐘插播
+    key = (now.strftime("%Y-%m-%d %H:%M"), tomorrow, clock, repr(games))
     if _cache["key"] != key:
         note = ""
         if not games and agg.states and all(s.error and not s.last_ok for s in agg.states):
             note = "資料來源連線失敗"
-        _cache["key"], _cache["pages"] = key, playlist.build(renderer, cfg, games, now, note, tomorrow)
+        if clock:
+            pages = [playlist.clock_page(renderer, games, now, tomorrow)]
+        else:
+            pages = playlist.build(renderer, cfg, games, now, note, tomorrow)
+        _cache["key"], _cache["pages"] = key, pages
     return now, games, _cache["pages"]
+
+
+def _hold_ms(p, now) -> int:
+    """時鐘插播頁停到插播結束為止（最多 15 秒就回來重抓一次，時鐘的分鐘數才會更新）。"""
+    if p.kind == "clock":
+        return min(p.hold_ms, max(1000, playlist.clock_break_ms(cfg, now) or 1000))
+    return p.hold_ms
 
 
 @app.get("/frame")
@@ -73,7 +85,7 @@ def frame(page: int = Query(0, ge=0)):
         headers={
             "X-Page": str(idx),
             "X-Pages": str(len(pages)),
-            "X-Hold-Ms": str(p.hold_ms),
+            "X-Hold-Ms": str(_hold_ms(p, now)),
             "X-Brightness": str(playlist.brightness(cfg, now, any(g.state == "live" for g in games))),
             "X-Refresh-Ms": str(int(cfg.raw["poll"]["screen_refresh_seconds"] * 1000) if p.live else 0),
             "Cache-Control": "no-store",
@@ -170,7 +182,8 @@ def api_status():
     return {
         "updated_at": agg.updated_at,
         "games": len(games),
-        "showing": "tomorrow" if agg.showing_tomorrow() else "today",  # tomorrow = 今天比賽都結束，輪播明日預告
+        "showing": "tomorrow" if agg.showing_tomorrow() else "today",
+        "clock_break": playlist.clock_break_ms(cfg, datetime.now(cfg.tz)) > 0,  # 正在時鐘插播  # tomorrow = 今天比賽都結束，輪播明日預告
         "pages": len(pages),
         "cycle_seconds": sum(p.hold_ms for p in pages) // 1000,  # 輪播一圈多久，每一場都會在這段時間內出現一次
         "leagues": agg.status(),

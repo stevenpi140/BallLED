@@ -10,6 +10,12 @@ display:
   #   small: fonts/fusion-pixel-12px-proportional-zh_hant.otf
   #   large: /usr/share/fonts/opentype/unifont/unifont.otf
 
+# 時鐘插播：每小時的 0、10、20、30、40、50 分，畫面改成時鐘 2 分鐘（比賽進行中也一樣）
+clock_break:
+  enabled: true
+  every_minutes: 10     # 每幾分鐘一次（從整點算起，要能整除 60）
+  minutes: 2            # 每次顯示幾分鐘
+
 brightness:
   day: 160            # 0-255
   night: 30           # 夜間模式（有比賽進行中時仍用 day 亮度）

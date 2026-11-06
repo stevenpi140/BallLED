@@ -38,6 +38,34 @@ def _game_page(r: Renderer, g: Game, now: datetime, hold: int, live_hold: int, t
     return Page("game", live_hold if live else hold, r.game(g, now, tomorrow), live)
 
 
+def clock_break_ms(cfg: Config, now: datetime) -> int:
+    """現在在時鐘插播時段內的話，回傳離插播結束還有幾毫秒；不在時段內回傳 0。
+
+    預設每小時的 0、10、20、30、40、50 分開始，各顯示 2 分鐘（x0:00～x1:59）。
+    """
+    c = cfg.raw.get("clock_break") or {}
+    if not c.get("enabled"):
+        return 0
+    every = max(1, int(c.get("every_minutes", 10)))
+    length = max(0, min(every, int(c.get("minutes", 2))))
+    into = (now.minute % every) * 60 + now.second + now.microsecond / 1e6  # 這個週期開始了幾秒
+    if into >= length * 60:
+        return 0
+    return max(1, int((length * 60 - into) * 1000))
+
+
+def clock_page(r: Renderer, games: list[Game], now: datetime, tomorrow: bool = False) -> Page:
+    """時鐘插播頁：大時鐘＋日期，底列是今天（或明天）比賽的簡短摘要。"""
+    live = sum(g.state == "live" for g in games)
+    if live:
+        msg = f"比賽進行中 {live} 場"
+    elif games:
+        msg = f"{'明日' if tomorrow else '今日'}共 {len(games)} 場比賽"
+    else:
+        msg = ""
+    return Page("clock", 15000, r.idle(now, msg=msg))
+
+
 def _parse_hm(s: str) -> dtime:
     h, m = s.split(":")
     return dtime(int(h), int(m))

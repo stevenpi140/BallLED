@@ -14,6 +14,7 @@ def _client(monkeypatch, games):
     # 不啟動背景抓資料，直接塞入比賽
     monkeypatch.setattr(server.agg, "start", lambda: None)
     monkeypatch.setattr(server.agg, "games", lambda: games)
+    monkeypatch.setitem(server.cfg.raw, "clock_break", {"enabled": False})  # 時鐘插播看實際時間，另外測
     return TestClient(server.app)
 
 
@@ -96,3 +97,20 @@ def test_marquee_endpoints(monkeypatch):
         assert r.headers["X-Marquee-Step-Ms"] == "15" and r.headers["X-Marquee-Repeat"] == "2"
         assert c.get("/preview/marquee.png").status_code == 200
         assert c.get("/api/status").json()["marquee"]["enabled"]
+
+
+def test_clock_break_endpoint(monkeypatch):
+    from scoreboard import playlist
+
+    with _client(monkeypatch, demo_games(server.cfg)) as c:
+        monkeypatch.setitem(server.cfg.raw, "clock_break", {"enabled": True, "every_minutes": 10, "minutes": 2})
+        monkeypatch.setattr(playlist, "clock_break_ms", lambda cfg, now: 45_000)
+        server._cache["key"] = None
+        r = c.get("/frame", params={"page": 5})
+        assert r.headers["X-Pages"] == "1" and r.headers["X-Hold-Ms"] == "15000"
+        assert c.get("/api/status").json()["clock_break"] is True
+        monkeypatch.setattr(playlist, "clock_break_ms", lambda cfg, now: 3_000)
+        server._cache["key"] = None
+        assert c.get("/frame").headers["X-Hold-Ms"] == "3000"  # 快結束時只停到插播結束
+        monkeypatch.setattr(playlist, "clock_break_ms", lambda cfg, now: 0)
+        assert int(c.get("/frame").headers["X-Pages"]) > 1  # 插播結束回到比賽輪播

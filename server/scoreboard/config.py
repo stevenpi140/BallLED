@@ -15,6 +15,8 @@ DEFAULTS = {
         "live_page_seconds": 12,
         "fonts": {},  # small / large 可指定字型檔
     },
+    # 時鐘插播：每小時的 0、10、20…50 分，畫面改成時鐘 2 分鐘（比賽進行中也一樣）
+    "clock_break": {"enabled": True, "every_minutes": 10, "minutes": 2},
     "brightness": {"day": 160, "night": 30, "night_start": "23:30", "night_end": "07:00"},
     "poll": {"live_seconds": 2, "screen_refresh_seconds": 2, "soon_seconds": 60, "idle_seconds": 600},
     "leagues": {

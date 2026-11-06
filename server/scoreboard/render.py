@@ -342,7 +342,8 @@ class Renderer:
             else:
                 d.polygon(poly, outline=DIM)
 
-    def idle(self, now: datetime, note: str = "") -> Image.Image:
+    def idle(self, now: datetime, note: str = "", msg: str | None = None) -> Image.Image:
+        """大時鐘＋日期。msg 指定底列文字（時鐘插播用）；沒指定時顯示 note 或「今日沒有追蹤的比賽」。"""
         img, d = self._canvas()
         hhmm = now.strftime("%H:%M")
         scale = 3 if self.w >= 96 else 2
@@ -350,7 +351,7 @@ class Renderer:
         self.digits(d, (self.w - cw) // 2, 4, hhmm, scale, WHITE)
         date_s = f"{now.month}/{now.day}（{WEEKDAYS[now.weekday()]}）"
         self.text(d, ((self.w - self.tw(date_s, self.small)) // 2, 7 * scale + 9), date_s, self.small, YELLOW)
-        msg = note or "今日沒有追蹤的比賽"
+        msg = (note or "今日沒有追蹤的比賽") if msg is None else msg
         self.text(d, ((self.w - min(self.tw(msg, self.small), self.w)) // 2, self.h - 13), msg, self.small, DIM, max_w=self.w)
         return img
 
