@@ -10,6 +10,10 @@ from scoreboard import server  # noqa: E402
 from scoreboard.demo import demo_games  # noqa: E402
 
 
+def _no_f1():
+    return [g for g in demo_games(server.cfg) if g.league != "F1"]  # F1 進行中會固定在 F1，輪播測試先拿掉
+
+
 def _client(monkeypatch, games):
     # 不啟動背景抓資料，直接塞入比賽
     monkeypatch.setattr(server.agg, "start", lambda: None)
@@ -19,13 +23,13 @@ def _client(monkeypatch, games):
 
 
 def test_frame_endpoint(monkeypatch):
-    games = demo_games(server.cfg)
+    games = _no_f1()
     with _client(monkeypatch, games) as c:
         r = c.get("/frame?page=0")
         assert r.status_code == 200
         assert len(r.content) == 128 * 64 * 2
         pages = int(r.headers["X-Pages"])
-        assert pages == 8  # 2 頁總覽 + 6 場
+        assert pages == 5  # 2 頁總覽 + 3 場已開打（未開打的 2 場沒有單場頁）
         assert int(r.headers["X-Hold-Ms"]) >= 1000
         assert 0 < int(r.headers["X-Brightness"]) <= 255
         # 頁碼超過總頁數會自動繞回
@@ -34,12 +38,12 @@ def test_frame_endpoint(monkeypatch):
 
 
 def test_status_and_preview(monkeypatch):
-    with _client(monkeypatch, demo_games(server.cfg)) as c:
+    with _client(monkeypatch, _no_f1()) as c:
         s = c.get("/api/status").json()
-        assert s["games"] == 6 and s["pages"] == 8 and s["cycle_seconds"] > 0
+        assert s["games"] == 5 and s["pages"] == 5 and s["cycle_seconds"] > 0
         assert c.get("/preview/1.png").headers["content-type"] == "image/png"
         assert "點陣看板預覽" in c.get("/").text
-        assert len(c.get("/api/games").json()) == 6
+        assert len(c.get("/api/games").json()) == 5
 
 
 def test_idle_when_no_games(monkeypatch):
@@ -50,9 +54,9 @@ def test_idle_when_no_games(monkeypatch):
 
 
 def test_live_pages_ask_for_refresh(monkeypatch):
-    games = demo_games(server.cfg)
+    games = _no_f1()
     with _client(monkeypatch, games) as c:
-        heads = [c.get(f"/frame?page={i}").headers for i in range(8)]
+        heads = [c.get(f"/frame?page={i}").headers for i in range(5)]
     live = [h["X-Refresh-Ms"] for h in heads]
     assert "2000" in live and "0" in live  # 進行中的比賽要求每 2 秒重抓，其他頁不用
 
@@ -102,7 +106,7 @@ def test_marquee_endpoints(monkeypatch):
 def test_clock_break_endpoint(monkeypatch):
     from scoreboard import playlist
 
-    with _client(monkeypatch, demo_games(server.cfg)) as c:
+    with _client(monkeypatch, _no_f1()) as c:
         monkeypatch.setitem(server.cfg.raw, "clock_break", {"enabled": True, "every_minutes": 10, "minutes": 2})
         monkeypatch.setattr(playlist, "clock_break_ms", lambda cfg, now: 45_000)
         server._cache["key"] = None

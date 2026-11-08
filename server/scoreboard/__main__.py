@@ -49,7 +49,7 @@ def cmd_preview(a):
     else:
         games = asyncio.run(_real_games(cfg, date.fromisoformat(a.date) if a.date else None))
     r = Renderer(cfg.display["width"], cfg.display["height"], cfg.display.get("fonts"))
-    pages = playlist.build(r, cfg, games, datetime.now(cfg.tz))
+    pages = playlist.build(r, cfg, games, datetime.now(cfg.tz), full=True)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     for i, p in enumerate(pages):

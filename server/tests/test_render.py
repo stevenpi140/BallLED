@@ -12,7 +12,7 @@ def test_frame_size_and_pages():
     r = Renderer(128, 64)
     now = datetime.now(CFG.tz)
     games = demo_games(CFG)
-    pages = playlist.build(r, CFG, games, now)
+    pages = playlist.build(r, CFG, games, now, full=True)
     # 6 場 → 2 頁總覽 + 6 頁單場
     assert [p.kind for p in pages].count("game") == 6
     assert [p.kind for p in pages].count("overview") == 2
