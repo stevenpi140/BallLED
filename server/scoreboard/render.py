@@ -104,6 +104,7 @@ class Renderer:
         self.w, self.h = width, height
         self.small = _load(SMALL_CANDIDATES, fonts.get("small"), fonts.get("small_size"))
         self.large = _load(LARGE_CANDIDATES, fonts.get("large"), fonts.get("large_size"))
+        self._ink: dict = {}
 
     # ---------- 基本繪圖 ----------
     def _canvas(self):
@@ -115,13 +116,22 @@ class Renderer:
     def tw(self, text: str, font) -> int:
         return int(font.getlength(text))
 
+    def ink_w(self, text: str, font) -> int:
+        """實際畫出來的右緣（點陣字型的「Q2」「OT」會比 getlength 多 1～2px，靠右對齊時會被切掉）。"""
+        key = (id(font), text)
+        if key not in self._ink:
+            bb = font.getmask(text, mode="1").getbbox() if text else None
+            off = font.getbbox(text, mode="1")[0] if text else 0
+            self._ink[key] = max(self.tw(text, font), (bb[2] + off) if bb else 0)
+        return self._ink[key]
+
     def text(self, d, xy, text, font, fill, max_w: int | None = None, anchor_right=False):
         if max_w is not None:
             while text and self.tw(text, font) > max_w:
                 text = text[:-1]
         x, y = xy
         if anchor_right:
-            x -= self.tw(text, font)
+            x -= self.ink_w(text, font)
         d.text((x, y), text, font=font, fill=fill)
         return self.tw(text, font)
 
@@ -156,7 +166,7 @@ class Renderer:
         f = self.small
         show = [bool(st) and g.state != "postponed" and not (drop_final and g.state == "final")
                 for g, *_, st in rows]
-        st_w = max((self.tw(st, f) + 3 for (*_, st), on in zip(rows, show) if on), default=0)
+        st_w = max((self.ink_w(st, f) + 3 for (*_, st), on in zip(rows, show) if on), default=0)
         away_w = max((self.tw(a, f) for _, a, *_ in rows), default=0)
         home_w = max((self.tw(h, f) for _, _, h, *_ in rows), default=0)
         home_right = self.w - st_w
@@ -210,7 +220,7 @@ class Renderer:
                 home_right, sx, show = layout["home_right"], layout["sep_x"], layout["show"][i]
             else:  # 真的放不下：退回每列各自置中
                 show = g.state not in ("final", "postponed") and bool(st)
-                home_right = self.w - (self.tw(st, self.small) + 3 if show else 0)
+                home_right = self.w - (self.ink_w(st, self.small) + 3 if show else 0)
                 aw, hw = self.tw(away, self.small), self.tw(home, self.small)
                 sx = (4 + aw + home_right - hw) // 2 - self.tw(mid, self.small) // 2 + self.tw(_split_mid(mid)[0], self.small)
             self.text(d, (4, y), away, self.small, DIM if win_h else g.away.color)
